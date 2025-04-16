@@ -2,12 +2,11 @@ import inspect
 from collections.abc import Sequence
 from typing import Annotated, Any, List
 
+from mcp.server.fastmcp.exceptions import InvalidSignature
+from mcp.server.fastmcp.utilities.func_metadata import ArgModelBase, _get_typed_annotation, FuncMetadata
 from pydantic import Field, WithJsonSchema, create_model
 from pydantic.fields import FieldInfo
 from pydantic_core import PydanticUndefined
-
-from mcp.server.fastmcp.exceptions import InvalidSignature
-from mcp.server.fastmcp.utilities.func_metadata import ArgModelBase, _get_typed_annotation, FuncMetadata
 
 
 def get_metadata(

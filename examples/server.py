@@ -2,7 +2,8 @@ import os
 import time
 from pathlib import Path
 from typing import Literal, Optional, TypedDict
-from server.calculation_mcp_server import CalculationMCPServer
+
+from dp.agent.server import CalculationMCPServer
 mcp = CalculationMCPServer("Demo")
 
 
@@ -59,27 +60,17 @@ def run_dp_train(
     time.sleep(4)
     with open("model.pt", "w") as f:
         f.write("This is model.")
-    os.makedirs("log", exist_ok=True)
-    with open("log/log.txt", "w") as f:
+    os.makedirs("logs", exist_ok=True)
+    with open("logs/log.txt", "w") as f:
         f.write("This is log.")
     with open("lcurve.out", "w") as f:
         f.write("This is lcurve.")
     return {
         "model": Path("model.pt"),
-        "log": Path("log"),
+        "log": Path("logs"),
         "lcurve.out": Path("lcurve.out"),
     }
 
 
 if __name__ == "__main__":
     mcp.run(transport="stdio")
-    """job_id = mcp.submit_fn(training_data="bohrium://13756/27666/store/training_data.tgz", storage={"type": "bohrium"})
-    print(job_id)
-    while True:
-        status = mcp.query_status_fn(job_id)
-        print(status)
-        if status != "Running":
-            break
-        time.sleep(1)
-    if status == "Succeeded":
-        mcp.get_results_fn(job_id, storage={"type": "bohrium"})"""
