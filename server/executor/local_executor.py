@@ -21,11 +21,11 @@ class LocalExecutor(BaseExecutor):
         kwargs["fn"] = fn
         p = Process(target=wrapped_fn, kwargs=kwargs)
         p.start()
-        return p.pid
+        return str(p.pid)
 
     def query_status(self, job_id):
         try:
-            p = psutil.Process(job_id)
+            p = psutil.Process(int(job_id))
             if p.status() == "running":
                 return "Running"
         except psutil.NoSuchProcess:
@@ -38,7 +38,7 @@ class LocalExecutor(BaseExecutor):
 
     def terminate(self, job_id):
         try:
-            p = psutil.Process(job_id)
+            p = psutil.Process(int(job_id))
             p.terminate()
         except Exception:
             pass

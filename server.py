@@ -72,7 +72,8 @@ def run_dp_train(
 
 
 if __name__ == "__main__":
-    job_id = mcp.submit_fn(training_data="bohrium://13756/27666/store/training_data.tgz", storage={"type": "bohrium"})
+    mcp.run(transport="stdio")
+    """job_id = mcp.submit_fn(training_data="bohrium://13756/27666/store/training_data.tgz", storage={"type": "bohrium"})
     print(job_id)
     while True:
         status = mcp.query_status_fn(job_id)
@@ -81,4 +82,4 @@ if __name__ == "__main__":
             break
         time.sleep(1)
     if status == "Succeeded":
-        mcp.get_results_fn(job_id, storage={"type": "bohrium"})
+        mcp.get_results_fn(job_id, storage={"type": "bohrium"})"""
