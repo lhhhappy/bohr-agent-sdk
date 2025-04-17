@@ -1,7 +1,10 @@
 import importlib
 import inspect
 import json
+import logging
 import os
+import shutil
+import time
 from pathlib import Path
 
 import jsonpickle
@@ -14,6 +17,7 @@ config = {
     "password": os.environ.get("BOHRIUM_PASSWORD", ""),
     "project_id": os.environ.get("BOHRIUM_PROJECT_ID", ""),
 }
+logger = logging.getLogger(__name__)
 
 
 def get_source_code(fn):
@@ -103,6 +107,8 @@ class DispatcherExecutor(BaseExecutor):
 
         if self.machine.get("context_type") == "Bohrium":
             self.machine["remote_profile"]["input_data"]["job_name"] = fn_name
+        # ensure submitting a new job
+        self.resources["envs"]["SUBMISSION_TIMESTAMP"] = str(time.time())
 
         machine = Machine.load_from_dict(self.machine)
         resources = Resources.load_from_dict(self.resources)
@@ -116,15 +122,18 @@ class DispatcherExecutor(BaseExecutor):
     def query_status(self, job_id):
         machine = Machine.load_from_dict(self.machine)
         content = machine.context.read_file(job_id + ".json")
-        submission = Submission.deserialize(submission_dict=json.loads(content))
+        submission = Submission.deserialize(
+            submission_dict=json.loads(content))
         submission.update_submission_state()
         if not submission.check_all_finished():
             return "Running"
         try:
             submission.run_submission(exit_on_submit=True)
-        except Exception:
+        except Exception as e:
+            logger.error(e)
             return "Failed"
         if os.path.isfile("results.txt"):
+            shutil.move("results.txt", "%s.txt" % job_id)
             return "Succeeded"
         else:
             return "Failed"
@@ -132,15 +141,20 @@ class DispatcherExecutor(BaseExecutor):
     def terminate(self, job_id):
         machine = Machine.load_from_dict(self.machine)
         content = machine.context.read_file(job_id + ".json")
-        submission = Submission.deserialize(submission_dict=json.loads(content))
+        submission = Submission.deserialize(
+            submission_dict=json.loads(content))
         submission.remove_unfinished_tasks()
 
     def get_results(self, job_id):
-        machine = Machine.load_from_dict(self.machine)
-        content = machine.context.read_file(job_id + ".json")
-        submission = Submission.deserialize(submission_dict=json.loads(content))
-        submission.run_submission(exit_on_submit=True)
-        if os.path.isfile("results.txt"):
-            with open("results.txt", "r") as f:
+        if not os.path.isfile("%s.txt" % job_id):
+            machine = Machine.load_from_dict(self.machine)
+            content = machine.context.read_file(job_id + ".json")
+            submission = Submission.deserialize(
+                submission_dict=json.loads(content))
+            submission.run_submission(exit_on_submit=True)
+            if os.path.isfile("results.txt"):
+                shutil.move("results.txt", "%s.txt" % job_id)
+        if os.path.isfile("%s.txt" % job_id):
+            with open("%s.txt" % job_id, "r") as f:
                 return jsonpickle.loads(f.read())
         return None
