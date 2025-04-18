@@ -7,7 +7,7 @@ This script starts the MCP server with integrated MQTT client.
 """
 import signal
 import sys
-from cloud.mcp_server import mcp
+from .mcp import mcp
 def signal_handler(sig, frame):
     """Handle SIGINT signal to gracefully shutdown."""
     print("Shutting down...")
