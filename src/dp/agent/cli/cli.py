@@ -2,6 +2,7 @@ import os
 import click
 import subprocess
 import sys
+import shutil
 from pathlib import Path
 import signal
 
@@ -18,8 +19,88 @@ def fetch():
 @fetch.command()
 def scaffolding():
     """Fetch scaffolding for the science agent."""
-    click.echo("Fetching scaffolding...")
-    click.echo("Scaffolding fetched successfully.")
+    click.echo("Generating...")
+    
+    # 获取SDK的源代码目录
+    sdk_root = Path(__file__).parent.parent
+    
+    # 获取用户当前工作目录
+    current_dir = Path.cwd()
+    print('sdk-root',sdk_root)
+    print('cwd',current_dir)
+    
+    # 创建必要的目录结构
+    project_dirs = ['cloud', 'lab']
+    for dir_name in project_dirs:
+        src_dir = sdk_root / dir_name
+        dst_dir = current_dir / dir_name
+        
+        if dst_dir.exists():
+            click.echo(f"Warning: {dir_name} already exists，skipping...")
+            continue
+            
+        shutil.copytree(src_dir, dst_dir)
+    
+    # 创建main.py文件作为入口点
+    main_content = '''import sys
+from dp.agent.cloud.mcp import mcp
+from dp.agent.cloud.mqtt import get_mqtt_cloud_instance
+from dp.agent.lab.mqtt_device_twin import DeviceTwin
+from dp.agent.lab.tescan_device import TescanDevice
+
+def run_cloud():
+    """Run in cloud environment"""
+    mqtt_instance = get_mqtt_cloud_instance()
+    
+    def signal_handler(sig, frame):
+        """Handle SIGINT signal to gracefully shutdown."""
+        print("Shutting down...")
+        mqtt_instance.stop()
+        sys.exit(0)
+    
+    # Register signal handler for graceful shutdown
+    import signal
+    signal.signal(signal.SIGINT, signal_handler)
+    
+    # Start MCP server
+    print("Starting MCP server...")
+    mcp.run(transport="sse")
+
+def run_lab():
+    """Run in lab environment"""
+    # Initialize device and twin
+    tescan_device = TescanDevice()
+    device_twin = DeviceTwin(tescan_device)
+    
+    # Run device twin
+    try:
+        device_twin.run()
+    except KeyboardInterrupt:
+        print("\\nShutting down lab environment...")
+        sys.exit(0)
+
+if __name__ == "__main__":
+    if len(sys.argv) != 2:
+        print("Usage: python main.py [lab|cloud]")
+        sys.exit(1)
+        
+    mode = sys.argv[1]
+    if mode == "lab":
+        run_lab()
+    elif mode == "cloud":
+        run_cloud()
+    else:
+        print(f"Unknown mode: {mode}")
+        print("Usage: python main.py [lab|cloud]")
+        sys.exit(1)
+'''
+    
+    main_file = current_dir / 'main.py'
+    if not main_file.exists():
+        main_file.write_text(main_content)
+        
+    click.echo("Succeed for fetching scaffold!")
+    click.echo("Now you can use dp-agent run-cloud or dp-agent run-lab to run this project!")
 
 @fetch.command()
 def config():
@@ -36,42 +117,30 @@ def run_lab():
     """Run the science agent in lab environment."""
     click.echo("Starting lab environment...")
     
-    from ..lab.mqtt_device_twin import DeviceTwin
-    from ..lab.tescan_device import TescanDevice
-    
-    # Create device instance
-    tescan_device = TescanDevice()
-    
-    # Create device twin
-    device_twin = DeviceTwin(tescan_device)
-    
-    # Run device twin
-    device_twin.run()
-    
-    click.echo("Lab environment started.")
+    # 在用户工作目录中执行main.py
+    try:
+        subprocess.run([sys.executable, "main.py", "lab"], check=True)
+    except subprocess.CalledProcessError as e:
+        click.echo(f"Run failed: {e}")
+        sys.exit(1)
+    except FileNotFoundError:
+        click.echo("Error: main.py not found. Please run scaffolding conmmand first.")
+        sys.exit(1)
 
 @cli.command()
 def run_cloud():
     """Run the science agent in cloud environment."""
     click.echo("Starting cloud environment...")
     
-    from ..cloud.mcp import mcp
-    from ..cloud.mqtt import get_mqtt_cloud_instance
-    
-    def signal_handler(sig, frame):
-        """Handle SIGINT signal to gracefully shutdown."""
-        click.echo("Shutting down...")
-        get_mqtt_cloud_instance().stop()
-        sys.exit(0)
-    
-    # Register signal handler
-    signal.signal(signal.SIGINT, signal_handler)
-    
-    # Start MCP server
-    click.echo("Starting MCP server...")
-    mcp.run(transport="sse")
-    
-    click.echo("Cloud environment started.")
+    # 在用户工作目录中执行main.py
+    try:
+        subprocess.run([sys.executable, "main.py", "cloud"], check=True)
+    except subprocess.CalledProcessError as e:
+        click.echo(f"Run failed: {e}")
+        sys.exit(1)
+    except FileNotFoundError:
+        click.echo("Error: main.py not found. Please run scaffolding conmmand first.")
+        sys.exit(1)
 
 @cli.command()
 def run_agent():
