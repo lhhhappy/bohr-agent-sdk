@@ -1,0 +1,31 @@
+[project]
+name = "science-agent-sdk"
+dynamic = ["version"]
+description = "SDK for scientific agents"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "DP Technology" }]
+maintainers = [
+    { name = "zjgemi", email = "liuxzj@dp.tech" },
+]
+keywords = ["agent SDK", "AI for science"]
+license = { text = "MIT" }
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+dependencies = [
+    "mcp",
+]
+
+[project.urls]
+Homepage = "https://github.com/dptech-corp/science-agent-sdk"
+repository = "https://github.com/dptech-corp/science-agent-sdk"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["dp"]

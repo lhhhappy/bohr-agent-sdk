@@ -7,22 +7,26 @@ def test_cli_commands():
     
     result = runner.invoke(cli, ['--help'])
     assert result.exit_code == 0
-    assert 'fetch-scaffolding' in result.output
-    assert 'fetch-config' in result.output
+    assert 'fetch' in result.output
     assert 'run-lab' in result.output
     assert 'run-cloud' in result.output
     assert 'run-agent' in result.output
     assert 'debug-cloud' in result.output
     
+    result = runner.invoke(cli, ['fetch', '--help'])
+    assert result.exit_code == 0
+    assert 'scaffolding' in result.output
+    assert 'config' in result.output
+    
     commands = [
-        'fetch-scaffolding',
-        'fetch-config',
-        'run-lab',
-        'run-cloud',
-        'run-agent',
-        'debug-cloud'
+        ['fetch', 'scaffolding'],
+        ['fetch', 'config'],
+        ['run-lab'],
+        ['run-cloud'],
+        ['run-agent'],
+        ['debug-cloud']
     ]
     
     for command in commands:
-        result = runner.invoke(cli, [command])
+        result = runner.invoke(cli, command)
         assert result.exit_code == 0

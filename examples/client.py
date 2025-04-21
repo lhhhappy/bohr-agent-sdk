@@ -51,6 +51,24 @@ class MCPClient:
 
 
 async def main():
+    executor = {
+        "type": "dispatcher",
+        "machine": {
+            "batch_type": "Bohrium",
+            "context_type": "Bohrium",
+            "remote_profile": {
+                "input_data": {
+                    "image_name": "registry.dp.tech/dptech/ubuntu:22.04-py3.10",
+                    "job_type": "container",
+                    "platform": "ali",
+                    "scass_type": "c2_m4_cpu",
+                },
+            },
+        },
+    }
+    storage = {
+        "type": "bohrium",
+    }
     client = MCPClient()
     try:
         await client.connect_to_server(
@@ -64,8 +82,9 @@ async def main():
         result = await client.call_tool(
             "run_dp_train",
             arguments={
-                "training_data": "bohrium://13756/27666/store/training_data.tgz",
-                "storage": {"type": "bohrium"},
+                "training_data": "bohrium://13756/27666/store/upload/training_data.tgz",
+                "storage": storage,
+                "executor": executor,
             },
         )
         job_id = result.content[0].text
@@ -75,6 +94,7 @@ async def main():
                 "query_job_status",
                 arguments={
                     "job_id": job_id,
+                    "executor": executor,
                 },
             )
             status = result.content[0].text
@@ -86,7 +106,8 @@ async def main():
             "get_job_results",
             arguments={
                 "job_id": job_id,
-                "storage": {"type": "bohrium"},
+                "storage": storage,
+                "executor": executor,
             },
         )
         results = result.content[0].text

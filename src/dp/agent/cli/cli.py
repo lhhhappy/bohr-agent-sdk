@@ -10,14 +10,19 @@ def cli():
     """DP Agent CLI tool for managing science agent tasks."""
     pass
 
-@cli.command()
-def fetch_scaffolding():
+@cli.group()
+def fetch():
+    """Fetch resources for the science agent."""
+    pass
+
+@fetch.command()
+def scaffolding():
     """Fetch scaffolding for the science agent."""
     click.echo("Fetching scaffolding...")
     click.echo("Scaffolding fetched successfully.")
 
-@cli.command()
-def fetch_config():
+@fetch.command()
+def config():
     """Fetch configuration files for the science agent.
     
     Downloads .env file and replaces dynamic variables like MQTT_DEVICE_ID.

@@ -13,8 +13,10 @@ class BaseExecutor(ABC):
             "Running", "Succeeded", "Failed"]:
         pass
 
+    @abstractmethod
     def terminate(self, job_id: str) -> None:
         pass
 
+    @abstractmethod
     def get_results(self, job_id: str) -> dict:
         pass
