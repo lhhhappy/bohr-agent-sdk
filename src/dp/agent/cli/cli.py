@@ -41,12 +41,27 @@ def scaffolding():
             
         shutil.copytree(src_dir, dst_dir)
     
+    # 创建__init__.py文件以使目录成为Python包
+    for dir_name in project_dirs:
+        init_file = current_dir / dir_name / '__init__.py'
+        if not init_file.exists():
+            init_file.write_text('')
+    
     # 创建main.py文件作为入口点
     main_content = '''import sys
-from dp.agent.cloud.mcp import mcp
-from dp.agent.cloud.mqtt import get_mqtt_cloud_instance
-from dp.agent.lab.mqtt_device_twin import DeviceTwin
-from dp.agent.lab.tescan_device import TescanDevice
+import signal
+from pathlib import Path
+import os
+
+# 添加当前目录到Python路径
+current_dir = Path(__file__).parent.absolute()
+sys.path.insert(0, str(current_dir))
+
+# 从本地模块导入
+from cloud.mcp import mcp
+from cloud.mqtt import get_mqtt_cloud_instance
+from lab.mqtt_device_twin import DeviceTwin
+from lab.tescan_device import TescanDevice
 
 def run_cloud():
     """Run in cloud environment"""
@@ -59,7 +74,6 @@ def run_cloud():
         sys.exit(0)
     
     # Register signal handler for graceful shutdown
-    import signal
     signal.signal(signal.SIGINT, signal_handler)
     
     # Start MCP server
