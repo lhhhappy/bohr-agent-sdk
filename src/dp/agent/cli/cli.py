@@ -21,25 +21,21 @@ def scaffolding():
     """Fetch scaffolding for the science agent."""
     click.echo("Generating...")
     
-    # 获取SDK的源代码目录
-    sdk_root = Path(__file__).parent.parent
-    
     # 获取用户当前工作目录
     current_dir = Path.cwd()
-    print('sdk-root',sdk_root)
-    print('cwd',current_dir)
     
     # 创建必要的目录结构
     project_dirs = ['cloud', 'lab']
     for dir_name in project_dirs:
-        src_dir = sdk_root / dir_name
         dst_dir = current_dir / dir_name
         
         if dst_dir.exists():
             click.echo(f"Warning: {dir_name} already exists，skipping...")
+            click.echo(f"If you want to create a new scaffold, please delete the existing project folder first.")
             continue
             
-        shutil.copytree(src_dir, dst_dir)
+        # 只创建目录，不复制SDK文件
+        dst_dir.mkdir(parents=True, exist_ok=True)
     
     # 创建__init__.py文件以使目录成为Python包
     for dir_name in project_dirs:
@@ -47,21 +43,17 @@ def scaffolding():
         if not init_file.exists():
             init_file.write_text('')
     
-    # 创建main.py文件作为入口点
+    # 创建main.py文件作为入口点，使用SDK包的导入
     main_content = '''import sys
 import signal
 from pathlib import Path
 import os
 
-# 添加当前目录到Python路径
-current_dir = Path(__file__).parent.absolute()
-sys.path.insert(0, str(current_dir))
-
-# 从本地模块导入
-from cloud.mcp import mcp
-from cloud.mqtt import get_mqtt_cloud_instance
-from lab.mqtt_device_twin import DeviceTwin
-from lab.tescan_device import TescanDevice
+# 从SDK包中导入所需模块
+from dp.agent.cloud.mcp import mcp
+from dp.agent.cloud.mqtt import get_mqtt_cloud_instance
+from dp.agent.lab.mqtt_device_twin import DeviceTwin
+from dp.agent.lab.tescan_device import TescanDevice
 
 def run_cloud():
     """Run in cloud environment"""
