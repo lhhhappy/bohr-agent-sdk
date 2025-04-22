@@ -25,17 +25,6 @@ mqtt_cloud = get_mqtt_cloud_instance()
 
 register_mcp_tools(mcp, tescan_device)
 
-def register_device_tools(device):
-    """注册设备相关的工具
-    
-    Args:
-        device: 设备实例
-    """
-    if hasattr(device, 'register_mcp_tools'):
-        device.register_mcp_tools(mcp)
-    else:
-        logger.warning("Device does not have register_mcp_tools method")
-
 @mcp.tool()
 async def custom_tool() -> str:
     """A custom tool not related to device actions."""
