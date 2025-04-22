@@ -3,8 +3,9 @@ Example of using the science-agent-sdk cloud functionality.
 """
 import signal
 import sys
-from src.dp.agent.cloud import mcp, get_mqtt_cloud_instance, register_device_tools
-from src.dp.agent.device import TescanDevice
+from dp.agent.cloud import mcp, get_mqtt_cloud_instance
+from dp.agent.lab.device import TescanDevice, register_mcp_tools
+from dp.agent.lab.device.device import register_mcp_tools
 
 def signal_handler(sig, frame):
     """Handle SIGINT signal to gracefully shutdown."""
@@ -20,10 +21,10 @@ def main():
     signal.signal(signal.SIGINT, signal_handler)
     
     # Create device instance
-    device = TescanDevice()
+    device = TescanDevice(mcp, device)
     
     # Register device tools
-    register_device_tools(device)
+    register_mcp_tools(device)
     
     # Start MCP server
     print("Starting MCP server...")
