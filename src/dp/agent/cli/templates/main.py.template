@@ -7,7 +7,8 @@ import os
 from dp.agent.cloud.mcp import mcp
 from dp.agent.cloud.mqtt import get_mqtt_cloud_instance
 from dp.agent.lab.mqtt_device_twin import DeviceTwin
-from dp.agent.lab.tescan_device import TescanDevice
+# 从本地导入 TescanDevice
+from lab.tescan_device import TescanDevice
 
 def run_cloud():
     """Run in cloud environment"""

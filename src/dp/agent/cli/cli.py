@@ -51,8 +51,16 @@ def scaffolding():
     main_file = current_dir / 'main.py'
     if not main_file.exists():
         shutil.copy2(main_template, main_file)
+    
+    # 从模板创建tescan_device.py文件
+    tescan_template = templates_dir / 'lab' / 'tescan_device.py.template'
+    tescan_file = current_dir / 'lab' / 'tescan_device.py'
+    if not tescan_file.exists():
+        shutil.copy2(tescan_template, tescan_file)
+        click.echo("\nCreated TescanDevice example implementation in lab/tescan_device.py")
+        click.echo("Please modify this file according to your actual device control requirements.")
         
-    click.echo("Succeed for fetching scaffold!")
+    click.echo("\nSucceed for fetching scaffold!")
     click.echo("Now you can use dp-agent run-cloud or dp-agent run-lab to run this project!")
 
 @fetch.command()
