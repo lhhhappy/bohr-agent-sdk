@@ -3,8 +3,8 @@ Cloud service module for science-agent-sdk.
 This module provides cloud service functionality for device control and monitoring.
 """
 
-from .mcp import mcp, get_mcp_instance
 from .mqtt import MQTTCloud, get_mqtt_cloud_instance
+from .mcp import mcp, get_mcp_instance
 
 __all__ = [
     'mcp',  # 全局MCP实例

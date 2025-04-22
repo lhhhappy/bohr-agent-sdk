@@ -148,11 +148,14 @@ def register_mcp_tools(mcp, device: Device):
         mcp: The MCP server instance
         device: The device to register tools for
     """
-    from cloud.mqtt_cloud import get_mqtt_cloud_instance
+    def get_mqtt_instance():
+        from dp.agent.cloud import get_mqtt_cloud_instance
+        return get_mqtt_cloud_instance()
+    
     import logging
     
     logger = logging.getLogger("mcp")
-    mqtt_cloud = get_mqtt_cloud_instance()
+    mqtt_cloud = get_mqtt_instance()
     device_name = device.device_name
     logger.info(f"Registering MCP tools for device_name: {device_name}: {_DEVICE_NAME_REGISTRY}")
     logger.info(f"Available device classes: {_ACTION_REGISTRY.keys()}")
