@@ -10,12 +10,10 @@ from paho.mqtt import client as mqtt
 import logging
 import dotenv
 from typing import Callable, Union
+from pathlib import Path
 
 from .device.device import Device
 from .device.types import BaseParams, ActionResult
-
-# Load environment variables
-dotenv.load_dotenv()
 
 # Set up logging
 logger = logging.getLogger("lab")
@@ -39,13 +37,28 @@ class DeviceTwin:
     receive control commands and publish status updates via MQTT.
     """
     
-    def __init__(self, device: Union[Device, Callable[[str, str, BaseParams], ActionResult]]):
+    def __init__(self, device: Union[Device, Callable[[str, str, BaseParams], ActionResult]], env_path: str = None):
         """Initialize the Device Twin with a device or a device action dispatcher function.
         
         Args:
             device: Either a Device object or a function to dispatch device actions
+            env_path: Optional path to the .env file. If not provided, will try to load from current directory
         """
         self.mqtt_client = None
+        
+        # Load environment variables
+        if env_path:
+            # 如果指定了环境变量文件路径，优先加载
+            dotenv.load_dotenv(env_path, override=True)
+        else:
+            # 尝试从当前工作目录加载
+            current_dir = os.getcwd()
+            env_file = os.path.join(current_dir, '.env')
+            if os.path.exists(env_file):
+                dotenv.load_dotenv(env_file, override=True)
+            else:
+                # 如果当前目录没有找到，再尝试加载 SDK 的默认环境变量
+                dotenv.load_dotenv()
         
         # Set up device or dispatcher function
         if isinstance(device, Device):
