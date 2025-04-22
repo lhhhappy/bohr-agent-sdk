@@ -7,7 +7,7 @@
 ### Linux/Mac
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/dptech-corp/science-agent-sdk/refs/heads/master/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/dptech-corp/science-agent-sdk/refs/heads/feat/clli/install.sh | bash
 ```
 
 ### Windows
@@ -15,7 +15,7 @@ curl -sSL https://raw.githubusercontent.com/dptech-corp/science-agent-sdk/refs/h
 在PowerShell中运行：
 
 ```powershell
-Invoke-WebRequest -Uri https://raw.githubusercontent.com/dptech-corp/science-agent-sdk/refs/heads/master/install.sh -OutFile install.sh
+Invoke-WebRequest -Uri https://raw.githubusercontent.com/dptech-corp/science-agent-sdk/refs/heads/feat/clli/install.sh -OutFile install.sh
 bash install.sh
 ```
 
@@ -26,13 +26,13 @@ bash install.sh
 ### 获取基础代码结构
 
 ```bash
-dp-agent fetch scaffolding
+dp-agent fetch-scaffolding
 ```
 
 ### 获取配置文件
 
 ```bash
-dp-agent fetch config
+dp-agent fetch-config
 ```
 
 此命令会下载 .env 配置文件并替换部分动态变量，如 MQTT_DEVICE_ID。
