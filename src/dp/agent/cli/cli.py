@@ -21,6 +21,9 @@ def scaffolding():
     """Fetch scaffolding for the science agent."""
     click.echo("Generating...")
     
+    # 获取模板目录路径
+    templates_dir = Path(__file__).parent / 'templates'
+    
     # 获取用户当前工作目录
     current_dir = Path.cwd()
     
@@ -43,67 +46,11 @@ def scaffolding():
         if not init_file.exists():
             init_file.write_text('')
     
-    # 创建main.py文件作为入口点，使用SDK包的导入
-    main_content = '''import sys
-import signal
-from pathlib import Path
-import os
-
-# 从SDK包中导入所需模块
-from dp.agent.cloud.mcp import mcp
-from dp.agent.cloud.mqtt import get_mqtt_cloud_instance
-from dp.agent.lab.mqtt_device_twin import DeviceTwin
-from dp.agent.lab.tescan_device import TescanDevice
-
-def run_cloud():
-    """Run in cloud environment"""
-    mqtt_instance = get_mqtt_cloud_instance()
-    
-    def signal_handler(sig, frame):
-        """Handle SIGINT signal to gracefully shutdown."""
-        print("Shutting down...")
-        mqtt_instance.stop()
-        sys.exit(0)
-    
-    # Register signal handler for graceful shutdown
-    signal.signal(signal.SIGINT, signal_handler)
-    
-    # Start MCP server
-    print("Starting MCP server...")
-    mcp.run(transport="sse")
-
-def run_lab():
-    """Run in lab environment"""
-    # Initialize device and twin
-    tescan_device = TescanDevice()
-    device_twin = DeviceTwin(tescan_device)
-    
-    # Run device twin
-    try:
-        device_twin.run()
-    except KeyboardInterrupt:
-        print("\\nShutting down lab environment...")
-        sys.exit(0)
-
-if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print("Usage: python main.py [lab|cloud]")
-        sys.exit(1)
-        
-    mode = sys.argv[1]
-    if mode == "lab":
-        run_lab()
-    elif mode == "cloud":
-        run_cloud()
-    else:
-        print(f"Unknown mode: {mode}")
-        print("Usage: python main.py [lab|cloud]")
-        sys.exit(1)
-'''
-    
+    # 从模板创建main.py文件
+    main_template = templates_dir / 'main.py.template'
     main_file = current_dir / 'main.py'
     if not main_file.exists():
-        main_file.write_text(main_content)
+        shutil.copy2(main_template, main_file)
         
     click.echo("Succeed for fetching scaffold!")
     click.echo("Now you can use dp-agent run-cloud or dp-agent run-lab to run this project!")
@@ -116,7 +63,33 @@ def config():
     Note: This command is only available in internal network environments.
     """
     click.echo("Fetching configuration...")
-    click.echo("Configuration fetched successfully.")
+    
+    # 获取模板目录路径
+    templates_dir = Path(__file__).parent / 'templates'
+    current_dir = Path.cwd()
+    
+    # 复制环境配置模板
+    env_template = templates_dir / '.env.template'
+    env_file = current_dir / '.env'
+    
+    if env_file.exists():
+        click.echo("Warning: .env file already exists. Skipping...")
+        click.echo("If you want to create a new .env file, please delete the existing one first.")
+    else:
+        shutil.copy2(env_template, env_file)
+        click.echo("Configuration file .env has been created.")
+        click.echo("\nIMPORTANT: Please update the following configurations in your .env file:")
+        click.echo("1. MQTT_INSTANCE_ID - Your Aliyun MQTT instance ID")
+        click.echo("2. MQTT_ENDPOINT - Your Aliyun MQTT endpoint")
+        click.echo("3. MQTT_DEVICE_ID - Your device ID")
+        click.echo("4. MQTT_GROUP_ID - Your group ID")
+        click.echo("5. MQTT_AK - Your Access Key")
+        click.echo("6. MQTT_SK - Your Secret Key")
+        click.echo("\nFor local development, you may also need to update:")
+        click.echo("- MQTT_BROKER and MQTT_PORT")
+        click.echo("- TESCAN_API_BASE")
+    
+    click.echo("\nConfiguration setup completed.")
 
 @cli.command()
 def run_lab():
