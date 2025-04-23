@@ -1,5 +1,6 @@
 import inspect
 import logging
+import time
 import uuid
 from collections.abc import Callable
 from pathlib import Path
@@ -98,6 +99,39 @@ class CalculationMCPServer:
     def __init__(self, *args, **kwargs):
         self.mcp = FastMCP(*args, **kwargs)
 
+    def add_patched_tool(self, fn, new_fn, name):
+        self.mcp.add_tool(fn, name=name)
+        # replace the function of the tool
+        tool = self.mcp._tool_manager.get_tool(name)
+        tool.fn = new_fn
+        # patch the metadata of the tool
+        # combine parameters
+        parameters = []
+        for param in _get_typed_signature(fn).parameters.values():
+            if param.annotation is Path:
+                parameters.append(inspect.Parameter(
+                    name=param.name, default=param.default,
+                    annotation=str, kind=param.kind))
+            elif param.annotation is Optional[Path]:
+                parameters.append(inspect.Parameter(
+                    name=param.name, default=param.default,
+                    annotation=Optional[str], kind=param.kind))
+            else:
+                parameters.append(param)
+        for param in _get_typed_signature(new_fn).parameters.values():
+            if param.name != "kwargs":
+                parameters.append(param)
+        func_arg_metadata = get_metadata(
+            name,
+            parameters=parameters,
+            skip_names=[tool.context_kwarg]
+            if tool.context_kwarg is not None else [],
+            globalns=getattr(fn, "__globals__", {})
+        )
+        json_schema = func_arg_metadata.arg_model.model_json_schema()
+        tool.fn_metadata = func_arg_metadata
+        tool.parameters = json_schema
+
     def tool(self):
         def decorator(fn: Callable) -> Callable:
             def submit_job(executor: Optional[dict] = None,
@@ -120,37 +154,23 @@ class CalculationMCPServer:
                 logger.info("Job submitted (ID: %s)" % job_id)
                 return job_id
 
-            self.mcp.add_tool(fn)
-            # replace the function of the tool
-            tool = self.mcp._tool_manager.get_tool(fn.__name__)
-            tool.fn = submit_job
-            # patch the metadata of the tool
-            # combine parameters
-            parameters = []
-            for param in _get_typed_signature(fn).parameters.values():
-                if param.annotation is Path:
-                    parameters.append(inspect.Parameter(
-                        name=param.name, default=param.default,
-                        annotation=str, kind=param.kind))
-                elif param.annotation is Optional[Path]:
-                    parameters.append(inspect.Parameter(
-                        name=param.name, default=param.default,
-                        annotation=Optional[str], kind=param.kind))
-                else:
-                    parameters.append(param)
-            for param in _get_typed_signature(submit_job).parameters.values():
-                if param.name != "kwargs":
-                    parameters.append(param)
-            func_arg_metadata = get_metadata(
-                fn.__name__,
-                parameters=parameters,
-                skip_names=[tool.context_kwarg]
-                if tool.context_kwarg is not None else [],
-                globalns=getattr(fn, "__globals__", {})
-            )
-            parameters = func_arg_metadata.arg_model.model_json_schema()
-            tool.fn_metadata = func_arg_metadata
-            tool.parameters = parameters
+            def run_job(executor: Optional[dict] = None,
+                        storage: Optional[dict] = None, **kwargs):
+                job_id = submit_job(
+                    executor=executor, storage=storage, **kwargs)
+                while True:
+                    status = query_job_status(job_id, executor=executor)
+                    if status != "Running":
+                        break
+                    time.sleep(4)
+                if status == "Succeeded":
+                    return get_job_results(
+                        job_id, executor=executor, storage=storage)
+                elif status == "Failed":
+                    raise RuntimeError("Job failed")
+
+            self.add_patched_tool(fn, run_job, fn.__name__)
+            self.add_patched_tool(fn, submit_job, "submit_" + fn.__name__)
             self.mcp.add_tool(query_job_status)
             self.mcp.add_tool(terminate_job)
             self.mcp.add_tool(get_job_results)
