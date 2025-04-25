@@ -99,44 +99,47 @@ def config():
     
     click.echo("\nConfiguration setup completed.")
 
-@cli.command()
-def run_lab():
+@cli.group()
+def run():
+    """Run the science agent in different environments."""
+    pass
+
+@run.command()
+def lab():
     """Run the science agent in lab environment."""
     click.echo("Starting lab environment...")
     
-    # 在用户工作目录中执行main.py
     try:
         subprocess.run([sys.executable, "main.py", "lab"], check=True)
     except subprocess.CalledProcessError as e:
         click.echo(f"Run failed: {e}")
         sys.exit(1)
     except FileNotFoundError:
-        click.echo("Error: main.py not found. Please run scaffolding conmmand first.")
+        click.echo("Error: main.py not found. Please run scaffolding command first.")
         sys.exit(1)
 
-@cli.command()
-def run_cloud():
+@run.command()
+def cloud():
     """Run the science agent in cloud environment."""
     click.echo("Starting cloud environment...")
     
-    # 在用户工作目录中执行main.py
     try:
         subprocess.run([sys.executable, "main.py", "cloud"], check=True)
     except subprocess.CalledProcessError as e:
         click.echo(f"Run failed: {e}")
         sys.exit(1)
     except FileNotFoundError:
-        click.echo("Error: main.py not found. Please run scaffolding conmmand first.")
+        click.echo("Error: main.py not found. Please run scaffolding command first.")
         sys.exit(1)
 
-@cli.command()
-def run_agent():
+@run.command()
+def agent():
     """Run the science agent."""
     click.echo("Starting agent...")
     click.echo("Agent started.")
 
-@cli.command()
-def debug_cloud():
+@run.command()
+def debug():
     """Debug the science agent in cloud environment."""
     click.echo("Starting cloud environment in debug mode...")
     click.echo("Cloud environment debug mode started.")

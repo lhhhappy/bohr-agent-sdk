@@ -8,6 +8,8 @@ from mcp.shared.context import RequestContext
 import dotenv
 import logging
 from .mqtt import get_mqtt_cloud_instance
+from dp.agent.lab.device.device import register_mcp_tools
+from dp.agent.lab.tescan_device import TescanDevice
 
 # Load environment variables
 dotenv.load_dotenv()
@@ -17,20 +19,11 @@ mcp = FastMCP("tescan")
 
 # Initialize logger
 logger = logging.getLogger("mcp")
-
+tescan_device = TescanDevice()
 # Initialize the MQTT Cloud client
 mqtt_cloud = get_mqtt_cloud_instance()
 
-def register_device_tools(device):
-    """注册设备相关的工具
-    
-    Args:
-        device: 设备实例
-    """
-    if hasattr(device, 'register_mcp_tools'):
-        device.register_mcp_tools(mcp)
-    else:
-        logger.warning("Device does not have register_mcp_tools method")
+register_mcp_tools(mcp, tescan_device)
 
 @mcp.tool()
 async def custom_tool() -> str:

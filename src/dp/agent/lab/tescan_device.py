@@ -6,8 +6,8 @@ specific parameter and result types.
 """
 import time
 from typing import Dict, TypedDict
-from .device.types import SuccessResult, BaseParams, ErrorResult
-from .device.device import Device, action
+from dp.agent.lab.device.types import SuccessResult, BaseParams, ErrorResult
+from dp.agent.lab.device.device import Device, action
 
 class TakePictureParams(BaseParams):
     """Parameters for take_picture action."""
@@ -33,6 +33,11 @@ class PictureData(TypedDict):
     """Picture data."""
     image_id: str
 
+
+class SleepParams(BaseParams):
+    """Parameters for sleep action."""
+    seconds: int
+
 class StagePositionResult(SuccessResult):
     """Result for get_stage_position action."""
     data: StagePosition
@@ -48,6 +53,32 @@ class MoveStageResult(SuccessResult):
 class TescanDevice(Device):
     """Tescan device implementation."""
     device_name = "tescan"
+
+    @action("start_electron_beam")
+    def start_electron_beam(self, params: BaseParams):
+        from dp.agent.lab.tescan_element_operator import start_electron_beam as do_start_electron_beam
+        do_start_electron_beam()
+    
+    @action("start_ion_beam")
+    def start_ion_beam(self, params: BaseParams):
+        from dp.agent.lab.tescan_element_operator import start_ion_beam as do_start_ion_beam
+        do_start_ion_beam()
+    
+    @action("toggle_electron_scanning")
+    def toggle_electron_scanning(self, params: BaseParams):
+        """start scanning, this will cost 5 seconds to finish. call sleep(5) after toggle this.
+        """
+        from dp.agent.lab.tescan_element_operator import toggle_electron_scanning as do_toggle_electron_scanning
+        do_toggle_electron_scanning()
+    
+    @action("toggle_ion_scanning")
+    def toggle_ion_scanning(self, params: BaseParams):
+        from dp.agent.lab.tescan_element_operator import toggle_ion_scanning as do_toggle_ion_scanning
+        do_toggle_ion_scanning()
+
+    @action("sleep")
+    def sleep(self, params: SleepParams):
+        time.sleep(params.get("seconds", 0))
 
     @action("take_picture")
     def take_picture(self, params: TakePictureParams) -> PictureResult:
