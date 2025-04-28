@@ -1,8 +1,11 @@
 import inspect
 import logging
+import os
 import time
 import uuid
 from collections.abc import Callable
+from contextlib import contextmanager
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse
 from typing import Literal, Optional
@@ -44,6 +47,17 @@ def init_executor(executor_config: Optional[dict] = None):
     return executor_dict[executor_type](**executor_config)
 
 
+@contextmanager
+def set_directory(workdir: str):
+    cwd = os.getcwd()
+    os.makedirs(workdir, exist_ok=True)
+    try:
+        os.chdir(workdir)
+        yield
+    finally:
+        os.chdir(cwd)
+
+
 def query_job_status(job_id: str, executor: Optional[dict] = None
                      ) -> Literal["Running", "Succeeded", "Failed"]:
     """
@@ -53,9 +67,11 @@ def query_job_status(job_id: str, executor: Optional[dict] = None
     Returns:
         status (str): One of "Running", "Succeeded" or "Failed"
     """
-    executor = init_executor(executor)
-    status = executor.query_status(job_id)
-    logger.info("Job %s status is %s" % (job_id, status))
+    trace_id, exec_id = job_id.split("/")
+    with set_directory(trace_id):
+        executor = init_executor(executor)
+        status = executor.query_status(exec_id)
+        logger.info("Job %s status is %s" % (job_id, status))
     return status
 
 
@@ -65,9 +81,11 @@ def terminate_job(job_id: str, executor: Optional[dict] = None):
     Args:
         job_id (str): The ID of the calculation job
     """
-    executor = init_executor(executor)
-    executor.terminate(job_id)
-    logger.info("Job %s is terminated" % job_id)
+    trace_id, exec_id = job_id.split("/")
+    with set_directory(trace_id):
+        executor = init_executor(executor)
+        executor.terminate(exec_id)
+        logger.info("Job %s is terminated" % job_id)
 
 
 def get_job_results(job_id: str, executor: Optional[dict] = None,
@@ -79,19 +97,21 @@ def get_job_results(job_id: str, executor: Optional[dict] = None,
     Returns:
         results (dict): results of the calculation job
     """
-    storage_type, storage = init_storage(storage)
-    executor = init_executor(executor)
-    results = executor.get_results(job_id)
-    prefix = str(uuid.uuid4())
-    for name in results:
-        if isinstance(results[name], Path):
-            key = storage.upload("%s/outputs/%s" % (prefix, name),
-                                 results[name])
-            uri = storage_type + "://" + key
-            logger.info("Artifact %s uploaded to %s" % (
-                results[name], uri))
-            results[name] = uri
-    logger.info("Job %s results is %s" % (job_id, results))
+    trace_id, exec_id = job_id.split("/")
+    with set_directory(trace_id):
+        storage_type, storage = init_storage(storage)
+        executor = init_executor(executor)
+        results = executor.get_results(exec_id)
+        prefix = str(uuid.uuid4())
+        for name in results:
+            if isinstance(results[name], Path):
+                key = storage.upload("%s/outputs/%s" % (prefix, name),
+                                     results[name])
+                uri = storage_type + "://" + key
+                logger.info("Artifact %s uploaded to %s" % (
+                    results[name], uri))
+                results[name] = uri
+        logger.info("Job %s results is %s" % (job_id, results))
     return results
 
 
@@ -136,22 +156,26 @@ class CalculationMCPServer:
         def decorator(fn: Callable) -> Callable:
             def submit_job(executor: Optional[dict] = None,
                            storage: Optional[dict] = None, **kwargs):
-                storage_type, storage = init_storage(storage)
-                sig = inspect.signature(fn)
-                for name, param in sig.parameters.items():
-                    if param.annotation is Path or (
-                        param.annotation is Optional[Path] and
-                            kwargs.get(name) is not None):
-                        uri = kwargs[name]
-                        scheme, key = parse_uri(uri)
-                        assert scheme == storage_type
-                        path = storage.download(key, "inputs/%s" % name)
-                        logger.info("Artifact %s downloaded to %s" % (
-                            uri, path))
-                        kwargs[name] = Path(path)
-                executor = init_executor(executor)
-                job_id = executor.submit(fn, kwargs)
-                logger.info("Job submitted (ID: %s)" % job_id)
+                trace_id = datetime.today().strftime('%Y-%m-%d %H:%M:%S.%f')
+                logger.info("Job processing (Trace ID: %s)" % trace_id)
+                with set_directory(trace_id):
+                    storage_type, storage = init_storage(storage)
+                    sig = inspect.signature(fn)
+                    for name, param in sig.parameters.items():
+                        if param.annotation is Path or (
+                            param.annotation is Optional[Path] and
+                                kwargs.get(name) is not None):
+                            uri = kwargs[name]
+                            scheme, key = parse_uri(uri)
+                            assert scheme == storage_type
+                            path = storage.download(key, "inputs/%s" % name)
+                            logger.info("Artifact %s downloaded to %s" % (
+                                uri, path))
+                            kwargs[name] = Path(path)
+                    executor = init_executor(executor)
+                    exec_id = executor.submit(fn, kwargs)
+                    job_id = "%s/%s" % (trace_id, exec_id)
+                    logger.info("Job submitted (ID: %s)" % job_id)
                 return job_id
 
             def run_job(executor: Optional[dict] = None,
