@@ -7,7 +7,7 @@
 ### Linux/Mac
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/dptech-corp/science-agent-sdk/refs/heads/feat/clli/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/dptech-corp/science-agent-sdk/refs/heads/feat/master/install.sh | bash
 ```
 
 ### Windows
@@ -15,7 +15,7 @@ curl -sSL https://raw.githubusercontent.com/dptech-corp/science-agent-sdk/refs/h
 在PowerShell中运行：
 
 ```powershell
-Invoke-WebRequest -Uri https://raw.githubusercontent.com/dptech-corp/science-agent-sdk/refs/heads/feat/clli/install.sh -OutFile install.sh
+Invoke-WebRequest -Uri https://raw.githubusercontent.com/dptech-corp/science-agent-sdk/refs/heads/feat/master/install.sh -OutFile install.sh
 bash install.sh
 ```
 
