@@ -2,7 +2,6 @@ import inspect
 import logging
 import os
 import time
-import uuid
 from collections.abc import Callable
 from contextlib import contextmanager
 from datetime import datetime
@@ -102,15 +101,15 @@ def get_job_results(job_id: str, executor: Optional[dict] = None,
         storage_type, storage = init_storage(storage)
         executor = init_executor(executor)
         results = executor.get_results(exec_id)
-        prefix = str(uuid.uuid4())
-        for name in results:
-            if isinstance(results[name], Path):
-                key = storage.upload("%s/outputs/%s" % (prefix, name),
-                                     results[name])
-                uri = storage_type + "://" + key
-                logger.info("Artifact %s uploaded to %s" % (
-                    results[name], uri))
-                results[name] = uri
+        if isinstance(results, dict):
+            for name in results:
+                if isinstance(results[name], Path):
+                    key = storage.upload("%s/outputs/%s" % (exec_id, name),
+                                         results[name])
+                    uri = storage_type + "://" + key
+                    logger.info("Artifact %s uploaded to %s" % (
+                        results[name], uri))
+                    results[name] = uri
         logger.info("Job %s results is %s" % (job_id, results))
     return results
 
@@ -167,8 +166,11 @@ class CalculationMCPServer:
                                 kwargs.get(name) is not None):
                             uri = kwargs[name]
                             scheme, key = parse_uri(uri)
-                            assert scheme == storage_type
-                            path = storage.download(key, "inputs/%s" % name)
+                            if scheme == storage_type:
+                                s = storage
+                            else:
+                                s = storage_dict[scheme]()
+                            path = s.download(key, "inputs/%s" % name)
                             logger.info("Artifact %s downloaded to %s" % (
                                 uri, path))
                             kwargs[name] = Path(path)

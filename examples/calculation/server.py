@@ -68,7 +68,7 @@ def run_dp_train(
     return {
         "model": Path("model.pt"),
         "log": Path("logs"),
-        "lcurve.out": Path("lcurve.out"),
+        "lcurve": Path("lcurve.out"),
     }
 
 
