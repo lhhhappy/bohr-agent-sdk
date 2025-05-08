@@ -16,6 +16,19 @@ class CalculationMCPTool(MCPTool):
         storage: Optional[dict] = None,
         **kwargs,
     ):
+        """Calculation MCP tool
+        extended from google.adk.tools.mcp_tool.MCPTool
+
+        Args:
+            executor: The executor configuration of the calculation tool.
+                It is a dict where the "type" field specifies the executor
+                type, and other fields are the keyword arguments of the
+                corresponding executor type.
+            storage: The storage configuration for storing artifacts. It is
+                a dict where the "type" field specifies the storage type,
+                and other fields are the keyword arguments of the
+                corresponding storage type.
+        """
         super().__init__(*args, **kwargs)
         self.executor = executor
         self.storage = storage
