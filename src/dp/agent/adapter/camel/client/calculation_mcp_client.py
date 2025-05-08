@@ -13,6 +13,19 @@ class CalculationMCPClient(MCPClient):
         storage: Optional[str] = None,
         **kwargs,
     ):
+        """Calculation MCP client
+        extended from camel.toolkits.mcp_toolkit.MCPClient
+
+        Args:
+            executor: The executor configuration of the calculation tool.
+                It is a dict where the "type" field specifies the executor
+                type, and other fields are the keyword arguments of the
+                corresponding executor type.
+            storage: The storage configuration for storing artifacts. It is
+                a dict where the "type" field specifies the storage type,
+                and other fields are the keyword arguments of the
+                corresponding storage type.
+        """
         super().__init__(*args, **kwargs)
         self.executor = executor
         self.storage = storage
