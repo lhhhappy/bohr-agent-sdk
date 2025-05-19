@@ -7,9 +7,11 @@ from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse
-from typing import Literal, Optional
+from typing import Literal, Optional, get_origin
 
 from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp.server import Context
+from mcp.server.fastmcp.tools.base import Tool
 from mcp.server.fastmcp.utilities.func_metadata import _get_typed_signature
 
 from .executor import executor_dict
@@ -118,12 +120,16 @@ class CalculationMCPServer:
     def __init__(self, *args, **kwargs):
         self.mcp = FastMCP(*args, **kwargs)
 
-    def add_patched_tool(self, fn, new_fn, name):
-        self.mcp.add_tool(fn, name=name)
-        # replace the function of the tool
-        tool = self.mcp._tool_manager.get_tool(name)
-        tool.fn = new_fn
+    def add_patched_tool(self, fn, new_fn, name, is_async=False):
         # patch the metadata of the tool
+        context_kwarg = None
+        sig = inspect.signature(fn)
+        for param_name, param in sig.parameters.items():
+            if get_origin(param.annotation) is not None:
+                continue
+            if issubclass(param.annotation, Context):
+                context_kwarg = param_name
+                break
         # combine parameters
         parameters = []
         for param in _get_typed_signature(fn).parameters.values():
@@ -143,13 +149,21 @@ class CalculationMCPServer:
         func_arg_metadata = get_metadata(
             name,
             parameters=parameters,
-            skip_names=[tool.context_kwarg]
-            if tool.context_kwarg is not None else [],
+            skip_names=[context_kwarg] if context_kwarg is not None else [],
             globalns=getattr(fn, "__globals__", {})
         )
         json_schema = func_arg_metadata.arg_model.model_json_schema()
-        tool.fn_metadata = func_arg_metadata
-        tool.parameters = json_schema
+        tool = Tool(
+            fn=new_fn,
+            name=name,
+            description=fn.__doc__,
+            parameters=json_schema,
+            fn_metadata=func_arg_metadata,
+            is_async=is_async,
+            context_kwarg=context_kwarg,
+            annotations=None,
+        )
+        self.mcp._tool_manager._tools[name] = tool
 
     def tool(self):
         def decorator(fn: Callable) -> Callable:
@@ -180,26 +194,33 @@ class CalculationMCPServer:
                     logger.info("Job submitted (ID: %s)" % job_id)
                 return job_id
 
-            def run_job(executor: Optional[dict] = None,
-                        storage: Optional[dict] = None, **kwargs):
+            async def run_job(executor: Optional[dict] = None,
+                              storage: Optional[dict] = None, **kwargs):
+                context = self.mcp.get_context()
                 job_id = submit_job(
                     executor=executor, storage=storage, **kwargs)
+                await context.log(level="info", message="Job submitted "
+                                  "(ID: %s)" % job_id)
                 while True:
                     status = query_job_status(job_id, executor=executor)
+                    await context.log(level="info", message="Job status: %s"
+                                      % status)
                     if status != "Running":
                         break
                     time.sleep(4)
                 if status == "Succeeded":
+                    await context.log(level="info", message="Job succeeded.")
                     return get_job_results(
                         job_id, executor=executor, storage=storage)
                 elif status == "Failed":
+                    await context.log(level="info", message="Job failed.")
                     raise RuntimeError("Job failed")
 
-            self.add_patched_tool(fn, run_job, fn.__name__)
-            self.add_patched_tool(fn, submit_job, "submit_" + fn.__name__)
-            self.mcp.add_tool(query_job_status)
-            self.mcp.add_tool(terminate_job)
-            self.mcp.add_tool(get_job_results)
+            self.add_patched_tool(fn, run_job, fn.__name__, is_async=True)
+            # self.add_patched_tool(fn, submit_job, "submit_" + fn.__name__)
+            # self.mcp.add_tool(query_job_status)
+            # self.mcp.add_tool(terminate_job)
+            # self.mcp.add_tool(get_job_results)
             return fn
         return decorator
 
