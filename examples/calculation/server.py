@@ -7,7 +7,24 @@ from dp.agent.server import CalculationMCPServer
 mcp = CalculationMCPServer("Demo")
 
 
-@mcp.tool()
+def preprocess(executor, storage, kwargs):
+    # set default input
+    if executor.get("type") == "dispatcher" and executor.get(
+            "machine", {}).get("batch_type") == "Bohrium":
+        machine = executor["machine"] = executor.get("machine", {})
+        remote_profile = machine["remote_profile"] = machine.get(
+            "remote_profile", {})
+        input_data = remote_profile["input_data"] = remote_profile.get(
+            "input_data", {})
+        input_data["image_name"] = input_data.get(
+            "image_name", "registry.dp.tech/dptech/ubuntu:22.04-py3.10")
+        input_data["job_type"] = input_data.get("job_type", "container")
+        input_data["platform"] = input_data.get("platform", "ali")
+        input_data["scass_type"] = input_data.get("scass_type", "c2_m4_cpu")
+    return executor, storage, kwargs
+
+
+@mcp.tool(preprocess_func=preprocess)
 def run_dp_train(
     training_data: Path,
     validation_data: Optional[Path] = None,

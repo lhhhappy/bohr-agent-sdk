@@ -166,15 +166,18 @@ class CalculationMCPServer:
         )
         self.mcp._tool_manager._tools[name] = tool
 
-    def tool(self):
+    def tool(self, preprocess_func=None):
+        if preprocess_func is None:
+            preprocess_func = self.preprocess_func
+
         def decorator(fn: Callable) -> Callable:
             def submit_job(executor: Optional[dict] = None,
                            storage: Optional[dict] = None, **kwargs):
                 trace_id = datetime.today().strftime('%Y-%m-%d %H:%M:%S.%f')
                 logger.info("Job processing (Trace ID: %s)" % trace_id)
                 with set_directory(trace_id):
-                    if self.preprocess_func is not None:
-                        executor, storage, kwargs = self.preprocess_func(
+                    if preprocess_func is not None:
+                        executor, storage, kwargs = preprocess_func(
                             executor, storage, kwargs)
                     storage_type, storage = init_storage(storage)
                     sig = inspect.signature(fn)
