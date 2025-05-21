@@ -17,12 +17,11 @@ async def test_mcp_tool():
     try:
         server_script_path = str(Path(__file__).parent.parent.parent
                                  / "examples" / "calculation" / "server.py")
-        tools, _ = await CalculationMCPToolset.from_server(
+        tools = await CalculationMCPToolset(
             connection_params=StdioServerParameters(
                 command='python3',
                 args=[server_script_path],
             ),
-            async_exit_stack=exit_stack,
             executor={
                 "type": "dispatcher",
                 "machine": {
@@ -47,7 +46,7 @@ async def test_mcp_tool():
                 "password": os.environ.get("BOHRIUM_PASSWORD"),
                 "project_id": int(os.environ.get("BOHRIUM_PROJECT_ID")),
             },
-        )
+        ).get_tools()
         tools = {tool.name: tool for tool in tools}
         tool = tools["run_dp_train"]
         result = await tool.run_async(args={
