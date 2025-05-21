@@ -9,8 +9,8 @@ mcp = CalculationMCPServer("Demo")
 
 def preprocess(executor, storage, kwargs):
     # set default input
-    if executor.get("type") == "dispatcher" and executor.get(
-            "machine", {}).get("batch_type") == "Bohrium":
+    if executor is not None and executor.get("type") == "dispatcher" and \
+            executor.get("machine", {}).get("batch_type") == "Bohrium":
         machine = executor["machine"] = executor.get("machine", {})
         remote_profile = machine["remote_profile"] = machine.get(
             "remote_profile", {})

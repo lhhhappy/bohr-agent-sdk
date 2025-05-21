@@ -232,4 +232,6 @@ class CalculationMCPServer:
         return decorator
 
     def run(self, **kwargs):
+        if os.environ.get("DP_AGENT_RUNNING_MODE") in ["1", "true"]:
+            return
         self.mcp.run(**kwargs)

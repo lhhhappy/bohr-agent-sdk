@@ -11,6 +11,9 @@ class FakeCalculationMCPServer:
             return fn
         return decorator
 
+    def run(self, *args, **kwargs):
+        return
+
 
 if RUNNING_MODE:
     CalculationMCPServer = FakeCalculationMCPServer
