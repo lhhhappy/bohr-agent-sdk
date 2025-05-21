@@ -117,7 +117,8 @@ def get_job_results(job_id: str, executor: Optional[dict] = None,
 
 
 class CalculationMCPServer:
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, preprocess_func=None, **kwargs):
+        self.preprocess_func = preprocess_func
         self.mcp = FastMCP(*args, **kwargs)
 
     def add_patched_tool(self, fn, new_fn, name, is_async=False):
@@ -172,6 +173,9 @@ class CalculationMCPServer:
                 trace_id = datetime.today().strftime('%Y-%m-%d %H:%M:%S.%f')
                 logger.info("Job processing (Trace ID: %s)" % trace_id)
                 with set_directory(trace_id):
+                    if self.preprocess_func is not None:
+                        executor, storage, kwargs = self.preprocess_func(
+                            executor, storage, kwargs)
                     storage_type, storage = init_storage(storage)
                     sig = inspect.signature(fn)
                     for name, param in sig.parameters.items():
