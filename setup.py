@@ -19,7 +19,7 @@ setup(
     packages=find_packages(where="src"),
     package_dir={"": "src"},
     include_package_data=True,
-    python_requires=">=3.11",
+    python_requires=">=3.10",
     install_requires=[
         "click",
         "mcp", 
