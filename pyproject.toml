@@ -79,8 +79,10 @@ Homepage = "https://github.com/dptech-corp/science-agent-sdk"
 repository = "https://github.com/dptech-corp/science-agent-sdk"
 "Bug Reports" = "https://github.com/dptech-corp/science-agent-sdk/issues"
 
+[tool.setuptools.packages.find]
+where = ["src"]
+
 [tool.setuptools]
-packages = ["dp"]
 package-dir = {"" = "src"}
 
 [build-system]
