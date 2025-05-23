@@ -173,7 +173,7 @@ class CalculationMCPServer:
         def decorator(fn: Callable) -> Callable:
             def submit_job(executor: Optional[dict] = None,
                            storage: Optional[dict] = None, **kwargs):
-                trace_id = datetime.today().strftime('%Y-%m-%d %H:%M:%S.%f')
+                trace_id = datetime.today().strftime('%Y-%m-%d-%H:%M:%S.%f')
                 logger.info("Job processing (Trace ID: %s)" % trace_id)
                 with set_directory(trace_id):
                     if preprocess_func is not None:
