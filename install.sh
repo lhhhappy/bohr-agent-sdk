@@ -7,10 +7,10 @@ echo "Installing dependencies..."
 
 if [ "$OS" == "Linux" ] || [ "$OS" == "Darwin" ]; then
   python3 -m pip install --upgrade pip
-  python3 -m pip install -e git+https://github.com/dptech-corp/science-agent-sdk.git#egg=science-agent-sdk
+  python3 -m pip install science-agent-sdk --upgrade
 elif [ "$OS" == "Windows_NT" ] || [[ "$OS" == MINGW* ]] || [[ "$OS" == CYGWIN* ]]; then
   python -m pip install --upgrade pip
-  python -m pip install -e git+https://github.com/dptech-corp/science-agent-sdk.git#egg=science-agent-sdk
+  python -m pip install science-agent-sdk --upgrade
 else
   echo "Unsupported operating system: $OS"
   exit 1
