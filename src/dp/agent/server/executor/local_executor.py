@@ -22,7 +22,7 @@ class LocalExecutor(BaseExecutor):
         os.environ["DP_AGENT_RUNNING_MODE"] = "1"
         p = Process(target=wrapped_fn, kwargs=kwargs)
         p.start()
-        return str(p.pid), ""
+        return {"job_id": str(p.pid)}
 
     def query_status(self, job_id):
         try:
