@@ -1,12 +1,12 @@
 from abc import ABC, abstractmethod
 from collections.abc import Callable
-from typing import Literal, NamedTuple
+from typing import Literal, TypedDict
 
 
 class BaseExecutor(ABC):
     @abstractmethod
-    def submit(self, fn: Callable, kwargs: dict) -> NamedTuple(
-            'results', [('job_id', str), ('extra_info', str)]):
+    def submit(self, fn: Callable, kwargs: dict) -> TypedDict(
+            'results', {'job_id': str, 'extra_info': str}):
         pass
 
     @abstractmethod
