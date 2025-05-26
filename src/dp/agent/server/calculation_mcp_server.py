@@ -196,18 +196,20 @@ class CalculationMCPServer:
                                 uri, path))
                             kwargs[name] = Path(path)
                     executor = init_executor(executor)
-                    exec_id = executor.submit(fn, kwargs)
+                    exec_id, extra_info = executor.submit(fn, kwargs)
                     job_id = "%s/%s" % (trace_id, exec_id)
                     logger.info("Job submitted (ID: %s)" % job_id)
-                return job_id
+                return job_id, extra_info
 
             async def run_job(executor: Optional[dict] = None,
                               storage: Optional[dict] = None, **kwargs):
                 context = self.mcp.get_context()
-                job_id = submit_job(
+                job_id, extra_info = submit_job(
                     executor=executor, storage=storage, **kwargs)
                 await context.log(level="info", message="Job submitted "
                                   "(ID: %s)" % job_id)
+                if extra_info:
+                    await context.log(level="info", message=extra_info)
                 while True:
                     status = query_job_status(job_id, executor=executor)
                     await context.log(level="info", message="Job status: %s"

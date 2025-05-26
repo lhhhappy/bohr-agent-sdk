@@ -127,7 +127,14 @@ class DispatcherExecutor(BaseExecutor):
             work_base='.', machine=machine, resources=resources,
             task_list=[task])
         submission.run_submission(exit_on_submit=True)
-        return submission.submission_hash
+        extra_info = ""
+        if self.machine.get("context_type") == "Bohrium":
+            job_id = submission.belonging_jobs[0].job_id
+            bohr_job_id = job_id.split(":job_group_id:")[0]
+            extra_info = "Job link: https://bohrium.dp.tech/jobs/detail/%s" \
+                % bohr_job_id
+            logger.info(extra_info)
+        return submission.submission_hash, extra_info
 
     def query_status(self, job_id):
         machine = Machine.load_from_dict(self.machine)
