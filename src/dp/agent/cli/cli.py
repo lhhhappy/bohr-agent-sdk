@@ -5,6 +5,9 @@ import sys
 import shutil
 from pathlib import Path
 import signal
+import uuid
+
+from ..server.storage import storage_dict
 
 @click.group()
 def cli():
@@ -143,6 +146,52 @@ def debug():
     """Debug the science agent in cloud environment."""
     click.echo("Starting cloud environment in debug mode...")
     click.echo("Cloud environment debug mode started.")
+
+@cli.group()
+def artifact():
+    """Manipulate the artifacts."""
+    pass
+
+@artifact.command()
+@click.argument("path")
+@click.option("-p", "--prefix", default=None,
+              help="Prefix in the artifact repository where the artifact uploaded to, 'upload/<uuid>' by default")
+@click.option("-s", "--scheme", default=None, help="Storage scheme, 'local' by default")
+def upload(**kwargs):
+    """Upload a file/directory from local to artifact repository"""
+    path = kwargs["path"]
+    prefix = kwargs["prefix"]
+    scheme = kwargs["scheme"]
+    if prefix and "://" in prefix:
+        offset = prefix.find("://")
+        scheme = prefix[:offset]
+        prefix = prefix[offset+3:]
+    if scheme is None:
+        scheme = "local"
+    if prefix is None:
+        prefix = "upload/%s" % uuid.uuid4()
+    storage = storage_dict[scheme]()
+    key = storage.upload(prefix, path)
+    uri = "%s://%s" % (scheme, key)
+    click.echo("%s has been uploaded to %s" % (path, uri))
+
+@artifact.command()
+@click.argument("uri")
+@click.option("-p", "--path", default=".", help="Path where the artifact downloaded to, '.' by default")
+def download(**kwargs):
+    """Download an artifact from artifact repository to local"""
+    uri = kwargs["uri"]
+    path = kwargs["path"]
+    if "://" in uri:
+        offset = uri.find("://")
+        scheme = uri[:offset]
+        key = uri[offset+3:]
+    else:
+        scheme = "local"
+        key = uri
+    storage = storage_dict[scheme]()
+    path = storage.download(key, path)
+    click.echo("%s has been downloaded to %s" % (uri, path))
 
 def main():
     cli()
