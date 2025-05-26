@@ -1,7 +1,5 @@
 import os
-import shutil
 import tarfile
-import tempfile
 from abc import ABC, abstractmethod
 from typing import List
 
@@ -67,32 +65,16 @@ class BaseStorage(ABC):
         return key
 
 
-def merge_dir(src, dst):
-    for f in os.listdir(src):
-        src_file = os.path.join(src, f)
-        dst_file = os.path.join(dst, f)
-        if os.path.isdir(src_file):
-            if os.path.isdir(dst_file):
-                merge_dir(src_file, dst_file)
-            else:
-                shutil.move(src_file, dst_file)
-        elif os.path.isfile(src_file):
-            shutil.move(src_file, dst_file)
-
-
 def extract(path):
-    with tempfile.TemporaryDirectory() as tmpdir:
-        with tarfile.open(path, "r:gz") as tf:
-            tf.extractall(tmpdir)
+    with tarfile.open(path, "r:gz") as tf:
+        common = os.path.commonpath(tf.getnames())
+        tf.extractall(os.path.dirname(path))
 
-        os.remove(path)
-        path = os.path.dirname(path)
-
-        # if the tarfile contains only one directory, merge the
-        # directory with the target directory
-        ld = os.listdir(tmpdir)
-        if len(ld) == 1 and os.path.isdir(os.path.join(tmpdir, ld[0])):
-            merge_dir(os.path.join(tmpdir, ld[0]), path)
-        else:
-            merge_dir(tmpdir, path)
-    return path
+    os.remove(path)
+    path = os.path.dirname(path)
+    # if the tarfile contains only one directory,
+    # return its path
+    if common != "":
+        return os.path.join(path, common)
+    else:
+        return path
