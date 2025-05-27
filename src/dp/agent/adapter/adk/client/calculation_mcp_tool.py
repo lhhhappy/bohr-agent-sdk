@@ -38,18 +38,37 @@ class CalculationMCPToolset(MCPToolset):
         self,
         executor: Optional[dict] = None,
         storage: Optional[dict] = None,
+        executor_map: Optional[dict] = None,
         **kwargs,
     ):
+        """
+        Calculation MCP toolset
+
+        Args:
+            executor: The default executor configuration of the calculation
+                tools. It is a dict where the "type" field specifies the
+                executor type, and other fields are the keyword arguments of
+                the corresponding executor type.
+            storage: The storage configuration for storing artifacts. It is
+                a dict where the "type" field specifies the storage type,
+                and other fields are the keyword arguments of the
+                corresponding storage type.
+            executor_map: A dict mapping from tool name to executor
+                configuration for specifying particular executor for certain
+                tools
+        """
         super().__init__(**kwargs)
         self.executor = executor
         self.storage = storage
+        self.executor_map = executor_map or {}
 
     async def get_tools(self, *args, **kwargs) -> List[CalculationMCPTool]:
         tools = await super().get_tools(*args, **kwargs)
         calc_tools = []
         for tool in tools:
             calc_tool = CalculationMCPTool(
-                executor=self.executor, storage=self.storage)
+                executor=self.executor_map.get(tool.name, self.executor),
+                storage=self.storage)
             calc_tool.__dict__.update(tool.__dict__)
             calc_tools.append(calc_tool)
         return calc_tools
