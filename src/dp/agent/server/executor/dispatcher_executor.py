@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import shutil
+import sys
 import time
 from pathlib import Path
 
@@ -75,7 +76,13 @@ class DispatcherExecutor(BaseExecutor):
         fn_name = fn.__name__
         module_name = fn.__module__
         if module_name in ["__main__", "__mp_main__"]:
-            script += get_source_code(fn)
+            module = sys.modules[module_name]
+            if hasattr(module, "__file__"):
+                self.python_packages.append(module.__file__)
+                name = os.path.splitext(os.path.basename(module.__file__))[0]
+                script += "from %s import %s\n" % (name, fn_name)
+            else:
+                script += get_source_code(fn)
         else:
             package_name = module_name.split('.')[0]
             module = importlib.import_module(package_name)
