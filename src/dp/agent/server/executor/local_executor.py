@@ -18,9 +18,8 @@ class LocalExecutor(BaseExecutor):
         pass
 
     def submit(self, fn, kwargs):
-        kwargs["fn"] = fn
         os.environ["DP_AGENT_RUNNING_MODE"] = "1"
-        p = Process(target=wrapped_fn, kwargs=kwargs)
+        p = Process(target=wrapped_fn, kwargs={"fn": fn, **kwargs})
         p.start()
         return {"job_id": str(p.pid)}
 
