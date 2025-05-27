@@ -27,7 +27,7 @@ class LocalExecutor(BaseExecutor):
     def query_status(self, job_id):
         try:
             p = psutil.Process(int(job_id))
-            if p.status() in ["running", "sleeping"]:
+            if p.status() not in ["zombie", "dead"]:
                 return "Running"
         except psutil.NoSuchProcess:
             pass
