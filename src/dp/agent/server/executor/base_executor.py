@@ -6,7 +6,7 @@ from typing import Literal, TypedDict
 class BaseExecutor(ABC):
     @abstractmethod
     def submit(self, fn: Callable, kwargs: dict) -> TypedDict(
-            'results', {'job_id': str, 'extra_info': str}):
+            'results', {'job_id': str, 'extra_info': dict}):
         pass
 
     @abstractmethod
