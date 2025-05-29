@@ -1,6 +1,8 @@
 from abc import ABC, abstractmethod
 from collections.abc import Callable
-from typing import Literal, TypedDict
+from typing import Any, Literal, TypedDict
+
+from mcp.server.fastmcp.server import Context
 
 
 class BaseExecutor(ABC):
@@ -20,4 +22,10 @@ class BaseExecutor(ABC):
 
     @abstractmethod
     def get_results(self, job_id: str) -> dict:
+        pass
+
+    @abstractmethod
+    async def async_run(
+        self, fn: Callable, kwargs: dict, context: Context) -> TypedDict(
+            'results', {'job_id': str, 'extra_info': dict, 'result': Any}):
         pass
