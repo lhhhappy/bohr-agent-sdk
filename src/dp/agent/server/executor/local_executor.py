@@ -1,6 +1,8 @@
+import inspect
 import jsonpickle
 import os
 import psutil
+import uuid
 from multiprocessing import Process
 
 from .base_executor import BaseExecutor
@@ -48,3 +50,13 @@ class LocalExecutor(BaseExecutor):
             with open("%s.txt" % job_id, "r") as f:
                 return jsonpickle.loads(f.read())
         return None
+
+    async def async_run(self, fn, kwargs, context):
+        if inspect.iscoroutinefunction(fn):
+            result = await fn(**kwargs)
+        else:
+            result = fn(**kwargs)
+        return {
+            "job_id": str(uuid.uuid4()),
+            "result": result,
+        }

@@ -3,7 +3,6 @@ import inspect
 import json
 import logging
 import os
-import shutil
 import sys
 import time
 from pathlib import Path
@@ -92,10 +91,19 @@ class DispatcherExecutor(BaseExecutor):
                 self.python_packages.append(module.__file__)
             script += "from %s import %s\n" % (module_name, fn_name)
 
-        script += "import jsonpickle\n\n"
+        script += "import asyncio, jsonpickle\n\n"
         script += "if __name__ == \"__main__\":\n"
-        script += "    results = %s(**jsonpickle.loads(r'''%s'''))\n" % (
-            fn_name, jsonpickle.dumps(kwargs))
+        script += "    kwargs = jsonpickle.loads(r'''%s''')\n" % \
+            jsonpickle.dumps(kwargs)
+        script += "    try:\n"
+        if inspect.iscoroutinefunction(fn):
+            script += "        results = asyncio.run(%s(**kwargs))\n" % fn_name
+        else:
+            script += "        results = %s(**kwargs)\n" % fn_name
+        script += "    except Exception as e:\n"
+        script += "        with open('err', 'w') as f:\n"
+        script += "            f.write(str(e))\n"
+        script += "        raise e\n"
         script += "    with open('results.txt', 'w') as f:\n"
         script += "        f.write(jsonpickle.dumps(results))\n"
         with open("script.py", "w") as f:
@@ -137,9 +145,13 @@ class DispatcherExecutor(BaseExecutor):
         res = {"job_id": submission.submission_hash}
         if self.machine.get("context_type") == "Bohrium":
             job_id = submission.belonging_jobs[0].job_id
-            bohr_job_id = job_id.split(":job_group_id:")[0]
-            extra_info = "Job link: https://bohrium.dp.tech/jobs/detail/%s" \
-                % bohr_job_id
+            bohr_job_id, bohr_group_id = job_id.split(":job_group_id:")
+            extra_info = {
+                "bohr_job_id": bohr_job_id,
+                "bohr_group_id": bohr_group_id,
+                "job_link": "https://bohrium.dp.tech/jobs/detail/%s" %
+                bohr_job_id,
+            }
             logger.info(extra_info)
             res["extra_info"] = extra_info
         return res
@@ -158,7 +170,6 @@ class DispatcherExecutor(BaseExecutor):
             logger.error(e)
             return "Failed"
         if os.path.isfile("results.txt"):
-            shutil.move("results.txt", "%s.txt" % job_id)
             return "Succeeded"
         else:
             return "Failed"
@@ -171,15 +182,41 @@ class DispatcherExecutor(BaseExecutor):
         submission.remove_unfinished_tasks()
 
     def get_results(self, job_id):
-        if not os.path.isfile("%s.txt" % job_id):
+        if os.path.isfile("results.txt"):
+            with open("results.txt", "r") as f:
+                return jsonpickle.loads(f.read())
+        else:
             machine = Machine.load_from_dict(self.machine)
             content = machine.context.read_file(job_id + ".json")
             submission = Submission.deserialize(
                 submission_dict=json.loads(content))
             submission.run_submission(exit_on_submit=True)
-            if os.path.isfile("results.txt"):
-                shutil.move("results.txt", "%s.txt" % job_id)
-        if os.path.isfile("%s.txt" % job_id):
-            with open("%s.txt" % job_id, "r") as f:
-                return jsonpickle.loads(f.read())
         return None
+
+    async def async_run(self, fn, kwargs, context):
+        info = self.submit(fn, kwargs)
+        job_id = info["job_id"]
+        logger.info("Job submitted (ID: %s)" % job_id)
+        await context.log(level="info", message="Job submitted (ID: %s)"
+                          % job_id)
+        if info.get("extra_info"):
+            await context.log(level="info", message=info["extra_info"])
+        while True:
+            status = self.query_status(job_id)
+            logger.info("Job %s status is %s" % (job_id, status))
+            await context.log(level="info", message="Job status: %s" % status)
+            if status != "Running":
+                break
+            time.sleep(10)
+        if status == "Succeeded":
+            await context.log(level="info", message="Job succeeded.")
+            result = self.get_results(job_id)
+            return {**info, "result": result}
+        elif status == "Failed":
+            await context.log(level="info", message="Job failed.")
+            if os.path.isfile("err"):
+                with open("err", "r") as f:
+                    err_msg = f.read()
+                raise RuntimeError(err_msg)
+            else:
+                raise RuntimeError("Job failed")
