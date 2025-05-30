@@ -8,8 +8,8 @@ from mcp.shared.context import RequestContext
 import dotenv
 import logging
 from .mqtt import get_mqtt_cloud_instance
-from dp.agent.lab.device.device import register_mcp_tools
-from dp.agent.lab.tescan_device import TescanDevice
+from dp.agent.device.device.device import register_mcp_tools
+from dp.agent.device.tescan_device import TescanDevice
 
 # Load environment variables
 dotenv.load_dotenv()

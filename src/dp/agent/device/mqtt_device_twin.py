@@ -59,7 +59,7 @@ class DeviceTwin:
             else:
                 # 如果当前目录没有找到，再尝试加载 SDK 的默认环境变量
                 dotenv.load_dotenv()
-        
+
         # Set up device or dispatcher function
         if isinstance(device, Device):
             self.device = device

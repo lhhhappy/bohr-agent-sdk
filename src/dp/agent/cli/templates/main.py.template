@@ -6,9 +6,9 @@ import os
 # 从SDK包中导入所需模块
 from dp.agent.cloud.mcp import mcp
 from dp.agent.cloud.mqtt import get_mqtt_cloud_instance
-from dp.agent.lab.mqtt_device_twin import DeviceTwin
+from dp.agent.device.mqtt_device_twin import DeviceTwin
 # 从本地导入 TescanDevice
-from lab.tescan_device import TescanDevice
+from device.tescan_device import TescanDevice
 
 def run_cloud():
     """Run in cloud environment"""
@@ -27,7 +27,7 @@ def run_cloud():
     print("Starting MCP server...")
     mcp.run(transport="sse")
 
-def run_lab():
+def run_device():
     """Run in lab environment"""
     # Initialize device and twin
     tescan_device = TescanDevice()
@@ -46,11 +46,11 @@ if __name__ == "__main__":
         sys.exit(1)
         
     mode = sys.argv[1]
-    if mode == "lab":
-        run_lab()
+    if mode == "device":
+        run_device()
     elif mode == "cloud":
         run_cloud()
     else:
         print(f"Unknown mode: {mode}")
-        print("Usage: python main.py [lab|cloud]")
+        print("Usage: python main.py [device|cloud]")
         sys.exit(1) 
