@@ -1,6 +1,31 @@
+import logging
 from typing import List, Optional
 
+from mcp import ClientSession, types
 from google.adk.tools.mcp_tool import MCPTool, MCPToolset
+from google.adk.tools.mcp_tool.mcp_session_manager import MCPSessionManager
+logger = logging.getLogger(__name__)
+
+
+async def logging_handler(
+    params: types.LoggingMessageNotificationParams,
+) -> None:
+    logger.log(getattr(logging, params.level.upper()), params.data)
+
+
+class MCPSessionManagerWithLoggingCallback(MCPSessionManager):
+    def __init__(
+      self,
+      logging_callback=None,
+      **kwargs,
+    ):
+        super().__init__(**kwargs)
+        self.logging_callback = logging_callback
+
+    async def create_session(self) -> ClientSession:
+        session = await super().create_session()
+        session._logging_callback = self.logging_callback
+        return session
 
 
 class CalculationMCPTool(MCPTool):
@@ -58,6 +83,11 @@ class CalculationMCPToolset(MCPToolset):
                 tools
         """
         super().__init__(**kwargs)
+        self._mcp_session_manager = MCPSessionManagerWithLoggingCallback(
+            connection_params=self._connection_params,
+            errlog=self._errlog,
+            logging_callback=logging_handler,
+        )
         self.executor = executor
         self.storage = storage
         self.executor_map = executor_map or {}
