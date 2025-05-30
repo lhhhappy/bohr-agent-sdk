@@ -3,7 +3,7 @@ Example of using the science-agent-sdk lab functionality.
 """
 import signal
 import sys
-from src.dp.agent.lab import DeviceTwin, TescanDevice
+from src.dp.agent.device import DeviceTwin, TescanDevice
 
 def signal_handler(sig, frame):
     """Handle SIGINT signal to gracefully shutdown."""

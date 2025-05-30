@@ -20,9 +20,13 @@ def fetch():
     pass
 
 @fetch.command()
-def scaffolding():
+@click.option('--type', 
+              default='calculation',
+              type=click.Choice(['cloud', 'calculation', 'device'], case_sensitive=False),
+              help='Scaffolding type (cloud/calculation/device)')
+def scaffolding(type):
     """Fetch scaffolding for the science agent."""
-    click.echo("Generating...")
+    click.echo(f"Generating {type} project scaffold...")
     
     # 获取模板目录路径
     templates_dir = Path(__file__).parent / 'templates'
@@ -31,7 +35,7 @@ def scaffolding():
     current_dir = Path.cwd()
     
     # 创建必要的目录结构
-    project_dirs = ['cloud', 'lab']
+    project_dirs = ['cloud', 'device']
     for dir_name in project_dirs:
         dst_dir = current_dir / dir_name
         
@@ -56,15 +60,15 @@ def scaffolding():
         shutil.copy2(main_template, main_file)
     
     # 从模板创建tescan_device.py文件
-    tescan_template = templates_dir / 'lab' / 'tescan_device.py.template'
-    tescan_file = current_dir / 'lab' / 'tescan_device.py'
+    tescan_template = templates_dir / 'device' / 'tescan_device.py.template'
+    tescan_file = current_dir / 'device' / 'tescan_device.py'
     if not tescan_file.exists():
         shutil.copy2(tescan_template, tescan_file)
-        click.echo("\nCreated TescanDevice example implementation in lab/tescan_device.py")
+        click.echo("\nCreated TescanDevice example implementation in device/tescan_device.py")
         click.echo("Please modify this file according to your actual device control requirements.")
         
     click.echo("\nSucceed for fetching scaffold!")
-    click.echo("Now you can use dp-agent run-cloud or dp-agent run-lab to run this project!")
+    click.echo("Now you can use dp-agent run-cloud or dp-agent run-device to run this project!")
 
 @fetch.command()
 def config():
@@ -107,21 +111,12 @@ def run():
     """Run the science agent in different environments."""
     pass
 
-@run.command()
-def lab():
-    """Run the science agent in lab environment."""
-    click.echo("Starting lab environment...")
-    
-    try:
-        subprocess.run([sys.executable, "main.py", "lab"], check=True)
-    except subprocess.CalledProcessError as e:
-        click.echo(f"Run failed: {e}")
-        sys.exit(1)
-    except FileNotFoundError:
-        click.echo("Error: main.py not found. Please run scaffolding command first.")
-        sys.exit(1)
+@run.group()
+def tool():
+    """Run specific tool environment."""
+    pass
 
-@run.command()
+@tool.command()
 def cloud():
     """Run the science agent in cloud environment."""
     click.echo("Starting cloud environment...")
@@ -134,6 +129,62 @@ def cloud():
     except FileNotFoundError:
         click.echo("Error: main.py not found. Please run scaffolding command first.")
         sys.exit(1)
+
+@tool.command()
+def device():
+    """Run the science agent in device environment."""
+    click.echo("Starting device environment...")
+    
+    try:
+        subprocess.run([sys.executable, "main.py", "device"], check=True)
+    except subprocess.CalledProcessError as e:
+        click.echo(f"Run failed: {e}")
+        sys.exit(1)
+    except FileNotFoundError:
+        click.echo("Error: main.py not found. Please run scaffolding command first.")
+        sys.exit(1)
+
+@tool.command()
+def calculation():
+    """Run the science agent in calculation environment."""
+    click.echo("Starting calculation environment...")
+    
+    try:
+        subprocess.run([sys.executable, "main.py", "calculation"], check=True)
+    except subprocess.CalledProcessError as e:
+        click.echo(f"Run failed: {e}")
+        sys.exit(1)
+    except FileNotFoundError:
+        click.echo("Error: main.py not found. Please run scaffolding command first.")
+        sys.exit(1)
+
+# @run.command()
+# def lab():
+#     """Run the science agent in lab environment."""
+#     click.echo("Starting lab environment...")
+    
+#     try:
+#         subprocess.run([sys.executable, "main.py", "lab"], check=True)
+#     except subprocess.CalledProcessError as e:
+#         click.echo(f"Run failed: {e}")
+#         sys.exit(1)
+#     except FileNotFoundError:
+#         click.echo("Error: main.py not found. Please run scaffolding command first.")
+#         sys.exit(1)
+
+# @run.command()
+# def cloud():
+#     """Run the science agent in cloud environment."""
+#     click.echo("Starting cloud environment...")
+    
+#     try:
+#         subprocess.run([sys.executable, "main.py", "cloud"], check=True)
+#     except subprocess.CalledProcessError as e:
+#         click.echo(f"Run failed: {e}")
+#         sys.exit(1)
+#     except FileNotFoundError:
+#         click.echo("Error: main.py not found. Please run scaffolding command first.")
+#         sys.exit(1)
 
 @run.command()
 def agent():
