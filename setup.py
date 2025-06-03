@@ -9,7 +9,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="science-agent-sdk",
-    version="0.1.6",
+    version="0.1.7",
     description="SDK for science agent and mcp tools",
     long_description=long_description,
     long_description_content_type="text/markdown",
