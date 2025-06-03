@@ -6,7 +6,7 @@ from google.adk.agents import Agent
 from google.adk.models.lite_llm import LiteLlm
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
-from google.adk.tools.mcp_tool.mcp_session_manager import SseServerParams
+from google.adk.tools.mcp_tool.mcp_session_manager import StreamableHTTPServerParams
 from google.genai import types
 model = LiteLlm(model="xxx")
 
@@ -20,8 +20,8 @@ async def async_main():
     )
 
     toolset = CalculationMCPToolset(
-        connection_params=SseServerParams(
-            url="http://localhost:8000/sse",
+        connection_params=StreamableHTTPServerParams(
+            url="http://localhost:8000/mcp",
         ),
         executor={
             "type": "dispatcher",
@@ -46,7 +46,7 @@ async def async_main():
             "username": os.environ.get("BOHRIUM_USERNAME"),
             "password": os.environ.get("BOHRIUM_PASSWORD"),
             "project_id": int(os.environ.get("BOHRIUM_PROJECT_ID")),
-        }
+        },
     )
     root_agent = Agent(
         model=model,
@@ -54,7 +54,7 @@ async def async_main():
         description='Agent to fulfill user needs using available tools.',
         instruction='Fulfill user needs using appropriate tools',
         tools=[toolset],
-        after_tool_callback=update_session_handler(session_service, session),
+        after_tool_callback=update_session_handler,
     )
 
     runner = Runner(
