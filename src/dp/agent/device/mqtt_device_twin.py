@@ -152,7 +152,11 @@ class DeviceTwin:
             # Execute the device action using the provided dispatcher function
             if self.dispatch_device_actions:
                 result = self.dispatch_device_actions(device_name, device_action, device_params)
-                result_dict = result.to_dict()
+                if isinstance(result, ActionResult):
+                    result_dict = result.to_dict()
+                else:
+                    result_dict = {
+                    }
                 # Prepare status message
                 status_message = {
                     "device_name": device_name,

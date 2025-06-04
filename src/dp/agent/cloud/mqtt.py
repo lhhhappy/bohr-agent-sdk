@@ -368,7 +368,7 @@ class MQTTCloud:
             del self.pending_requests[request_id]
             raise Exception(f"Failed to publish message: {result.rc}")
         
-        logger.info(f"Published control message to {self.device_control_topic} with request ID {request_id}")
+        logger.info(f"Published control message to {self.device_control_topic} for action {device_action} with request ID {request_id}")
         
         return request_id
             
