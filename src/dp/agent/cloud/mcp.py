@@ -3,27 +3,22 @@ MCP (Message Control Protocol) server implementation.
 """
 from typing import Any, Optional
 from mcp.server.fastmcp import FastMCP
-from mcp.server.session import ServerSession
-from mcp.shared.context import RequestContext
 import dotenv
 import logging
 from .mqtt import get_mqtt_cloud_instance
 from dp.agent.device.device.device import register_mcp_tools
-from dp.agent.device.tescan_device import TescanDevice
 
 # Load environment variables
 dotenv.load_dotenv()
 
 # Initialize FastMCP server
-mcp = FastMCP("tescan")
+mcp = FastMCP("device-cloud-mcp")
 
 # Initialize logger
 logger = logging.getLogger("mcp")
-tescan_device = TescanDevice()
 # Initialize the MQTT Cloud client
 mqtt_cloud = get_mqtt_cloud_instance()
 
-register_mcp_tools(mcp, tescan_device)
 
 @mcp.tool()
 async def custom_tool() -> str:

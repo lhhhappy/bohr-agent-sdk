@@ -28,6 +28,8 @@ dependencies = [
     "lbg>=1.2.29",
     "jsonpickle>=3.0.3",
     "psutil>=5.9.6",
+    "paho-mqtt>=2.1.0",
+    "redis>=6.2.0",
 ]
 
 # 可选依赖

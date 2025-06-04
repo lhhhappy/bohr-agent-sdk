@@ -60,8 +60,6 @@ setup(
     entry_points={
         "console_scripts": [
             "dp-agent=dp.agent.cli.cli:main",
-            "dp-agent-lab=dp.agent.lab.main:main",
-            "dp-agent-cloud=dp.agent.cloud.main:main",
         ],
     },
     project_urls={

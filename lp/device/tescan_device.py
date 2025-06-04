@@ -56,25 +56,21 @@ class TescanDevice(Device):
 
     @action("start_electron_beam")
     def start_electron_beam(self, params: BaseParams):
-        from dp.agent.device.tescan_element_operator import start_electron_beam as do_start_electron_beam
-        do_start_electron_beam()
+        print("start electron beam")
     
     @action("start_ion_beam")
     def start_ion_beam(self, params: BaseParams):
-        from dp.agent.device.tescan_element_operator import start_ion_beam as do_start_ion_beam
-        do_start_ion_beam()
+        print("start ion beam")
     
     @action("toggle_electron_scanning")
     def toggle_electron_scanning(self, params: BaseParams):
         """start scanning, this will cost 5 seconds to finish. call sleep(5) after toggle this.
         """
-        from dp.agent.device.tescan_element_operator import toggle_electron_scanning as do_toggle_electron_scanning
-        do_toggle_electron_scanning()
+        print("toggle electron scanning")
     
     @action("toggle_ion_scanning")
     def toggle_ion_scanning(self, params: BaseParams):
-        from dp.agent.device.tescan_element_operator import toggle_ion_scanning as do_toggle_ion_scanning
-        do_toggle_ion_scanning()
+        print("toggle ion scanning")
 
     @action("sleep")
     def sleep(self, params: SleepParams):
