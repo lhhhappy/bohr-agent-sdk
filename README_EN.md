@@ -25,7 +25,7 @@ After installation, you can use the following commands:
 ### Fetch Scaffolding
 
 ```bash
-dp-agent fetch scaffolding --type=cloud/calculation/device
+dp-agent fetch scaffolding --type=calculation/device
 ```
 
 ### Fetch Configuration
