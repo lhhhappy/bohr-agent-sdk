@@ -8,12 +8,12 @@ from dp.agent.cloud.mcp import mcp
 from dp.agent.cloud.mqtt import get_mqtt_cloud_instance
 from dp.agent.device.mqtt_device_twin import DeviceTwin
 # 从本地导入 TescanDevice
-from device.tescan_device import TescanDevice
 
 def run_cloud():
     """Run in cloud environment"""
     mqtt_instance = get_mqtt_cloud_instance()
     from dp.agent.device.device.device import register_mcp_tools
+    from device.tescan_device import TescanDevice
     register_mcp_tools(mcp, TescanDevice())
     def signal_handler(sig, frame):
         """Handle SIGINT signal to gracefully shutdown."""
@@ -30,6 +30,7 @@ def run_cloud():
 def run_device():
     """Run in lab environment"""
     # Initialize device and twin
+    from device.tescan_device import TescanDevice
     tescan_device = TescanDevice()
     device_twin = DeviceTwin(tescan_device)
     

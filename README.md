@@ -26,7 +26,7 @@ pip install science-agent-sdk --upgrade
 
 ```bash
 # 获取基础代码结构
-dp-agent fetch scaffolding --type=cloud/calculation/device
+dp-agent fetch scaffolding --type=calculation/device
 
 # 获取配置文件
 dp-agent fetch config
