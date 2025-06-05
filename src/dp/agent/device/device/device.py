@@ -30,7 +30,7 @@ def action(device_action: str):
         Decorated function
     """
     def decorator(func: Callable) -> Callable:
-        logger.info(f"Registering action {device_action} for function {func.__name__}")
+        logger.info(f"start register action {device_action} for function {func.__name__}")
         @wraps(func)
         def wrapper(self, params: BaseParams) -> ActionResult:
             return func(self, params)
@@ -67,6 +67,7 @@ def action(device_action: str):
             if cls_name not in _ACTION_REGISTRY:
                 _ACTION_REGISTRY[cls_name] = {}
             _ACTION_REGISTRY[cls_name][device_action] = metadata
+            # logger.info(f"After register action {device_action} for class {cls.__name__}, registry: {_ACTION_REGISTRY}")
             return cls
         
         setattr(wrapper, 'register', register_action)
@@ -157,7 +158,7 @@ def register_mcp_tools(mcp, device: Device):
     logger = logging.getLogger("mcp")
     mqtt_cloud = get_mqtt_instance()
     device_name = device.device_name
-    logger.info(f"Registering MCP tools for device_name: {device_name}: {_DEVICE_NAME_REGISTRY}")
+    logger.info(f"Start register MCP tools for device_name: {device_name}: {_DEVICE_NAME_REGISTRY}")
     logger.info(f"Available device classes: {_ACTION_REGISTRY.keys()}")
     
     # Find device classes that handle this device_name
@@ -192,32 +193,32 @@ def register_mcp_tools(mcp, device: Device):
                 
                 logger.info(f"Creating MCP tool: {action_name} for device {device_name} with parameters {parameters}")
                 
-                # Create the function with **kwargs to accept any parameters
-                async def create_tool_func(**kwargs):
-                    """Dynamically created MCP tool function."""
-                    # Get the action_name and metadata from closure
-                    nonlocal action_name, metadata
-                    
-                    params = {}
-                    # Extract parameters from kwargs
-                    for param_name in metadata['params'].keys():
-                        if param_name in kwargs and kwargs[param_name] is not None:
-                            params[param_name] = kwargs[param_name]
-                    
-                    request_id = mqtt_cloud.send_device_control(
-                        device_name=device_name,
-                        device_action=action_name,
-                        device_params=params
-                    )
-                    
-                    response = mqtt_cloud.wait_for_status_update(request_id, timeout=10.0)
-                    
-                    if response:
-                        return str(response["result"])
-                    else:
-                        return f"Timeout waiting for {action_name} response."
+                # Create a factory function to properly capture action_name and metadata for each iteration
+                def create_tool_factory(current_action_name, current_metadata):
+                    async def tool_func(**kwargs):
+                        """Dynamically created MCP tool function."""
+                        params = {}
+                        # Extract parameters from kwargs
+                        for param_name in current_metadata['params'].keys():
+                            if param_name in kwargs and kwargs[param_name] is not None:
+                                params[param_name] = kwargs[param_name]
+                        
+                        logger.info(f"Sending device control for {device_name} action {current_action_name} with params {params}")
+                        request_id = mqtt_cloud.send_device_control(
+                            device_name=device_name,
+                            device_action=current_action_name,
+                            device_params=params
+                        )
+                        
+                        response = mqtt_cloud.wait_for_status_update(request_id, timeout=10.0)
+                        
+                        if response:
+                            return str(response["result"])
+                        else:
+                            return f"Timeout waiting for {current_action_name} response."
+                    return tool_func
                 
-                tool_func = create_tool_func
+                tool_func = create_tool_factory(action_name, metadata)
                 tool_func.__name__ = action_name
                 tool_func.__doc__ = metadata['doc']
                 

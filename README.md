@@ -26,7 +26,7 @@ pip install science-agent-sdk --upgrade
 
 ```bash
 # 获取基础代码结构
-dp-agent fetch scaffolding --type=cloud/calculation/device
+dp-agent fetch scaffolding --type=calculation/device
 
 # 获取配置文件
 dp-agent fetch config
@@ -78,7 +78,7 @@ your-project/
 
 ```python
 from typing import Dict, TypedDict
-from dp.agent.lab.device import Device, action, BaseParams, SuccessResult
+from dp.agent.device.device import Device, action, BaseParams, SuccessResult
 
 class TakePictureParams(BaseParams):
     """拍照参数"""
@@ -122,8 +122,7 @@ Example of using the science-agent-sdk cloud functionality.
 import signal
 import sys
 from dp.agent.cloud import mcp, get_mqtt_cloud_instance
-from dp.agent.lab.device import TescanDevice, register_mcp_tools
-from dp.agent.lab.device.device import register_mcp_tools
+from dp.agent.device.device import TescanDevice, register_mcp_tools
 
 def signal_handler(sig, frame):
     """Handle SIGINT signal to gracefully shutdown."""

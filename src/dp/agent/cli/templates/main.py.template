@@ -8,12 +8,13 @@ from dp.agent.cloud.mcp import mcp
 from dp.agent.cloud.mqtt import get_mqtt_cloud_instance
 from dp.agent.device.mqtt_device_twin import DeviceTwin
 # 从本地导入 TescanDevice
-from device.tescan_device import TescanDevice
 
 def run_cloud():
     """Run in cloud environment"""
     mqtt_instance = get_mqtt_cloud_instance()
-    
+    from dp.agent.device.device.device import register_mcp_tools
+    from device.tescan_device import TescanDevice
+    register_mcp_tools(mcp, TescanDevice())
     def signal_handler(sig, frame):
         """Handle SIGINT signal to gracefully shutdown."""
         print("Shutting down...")
@@ -26,10 +27,10 @@ def run_cloud():
     # Start MCP server
     print("Starting MCP server...")
     mcp.run(transport="sse")
-
 def run_device():
     """Run in lab environment"""
     # Initialize device and twin
+    from device.tescan_device import TescanDevice
     tescan_device = TescanDevice()
     device_twin = DeviceTwin(tescan_device)
     
@@ -40,9 +41,17 @@ def run_device():
         print("\nShutting down lab environment...")
         sys.exit(0)
 
+def run_calculation():
+    """Run in calculation environment"""
+    # 在此实现你自己的计算环境逻辑
+    print("Running calculation task...")
+    # 模拟任务处理逻辑
+    from calculation import simple
+    simple.run()
+    
 if __name__ == "__main__":
     if len(sys.argv) != 2:
-        print("Usage: python main.py [lab|cloud]")
+        print("Usage: python main.py [device|cloud|calculation]")
         sys.exit(1)
         
     mode = sys.argv[1]
@@ -50,7 +59,9 @@ if __name__ == "__main__":
         run_device()
     elif mode == "cloud":
         run_cloud()
+    elif mode == "calculation":  
+        run_calculation()
     else:
         print(f"Unknown mode: {mode}")
-        print("Usage: python main.py [device|cloud]")
+        print("Usage: python main.py [device|cloud|calculation]")
         sys.exit(1) 
