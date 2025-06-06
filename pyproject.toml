@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 authors = [{ name = "DP Technology" }]
 maintainers = [
+    { name = "liupeng", email = "liupeng@dp.tech" },
     { name = "zjgemi", email = "liuxzj@dp.tech" },
 ]
 keywords = ["agent SDK", "AI for science"]
@@ -35,7 +36,7 @@ dependencies = [
 # 可选依赖
 [project.optional-dependencies]
 # 实验室模式依赖
-lab = [
+device = [
     "pywinauto-recorder>=0.1.0",  # 用于设备控制
 ]
 
@@ -65,12 +66,13 @@ docs = [
 
 # 完整安装（包含所有功能）
 all = [
-    "bohr-agent-sdk[lab,cloud,dev,docs,dispatcher,bohrium]",
+    "bohr-agent-sdk[device,cloud,dev,docs,dispatcher,bohrium]",
 ]
 
 # CLI 入口点配置
 [project.scripts]
 dp-agent = "dp.agent.cli.cli:main"
+bohr-agent = "dp.agent.cli.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/dptech-corp/bohr-agent-sdk"
