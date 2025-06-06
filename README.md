@@ -4,18 +4,8 @@
 
 ## 安装
 
-### Linux/Mac
-
 ```bash
-pip install bohr-agent-sdk --upgrade
-```
-
-### Windows
-
-在PowerShell中运行：
-
-```powershell
-pip install bohr-agent-sdk --upgrade
+pip install bohr-agent-sdk -i https://pypi.org/simple --upgrade
 ```
 
 ## CLI 使用方法

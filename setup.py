@@ -9,7 +9,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="bohr-agent-sdk",
-    version="0.1.8",
+    version="0.1.9",
     description="SDK for science agent and mcp tools",
     long_description=long_description,
     long_description_content_type="text/markdown",
@@ -60,6 +60,7 @@ setup(
     entry_points={
         "console_scripts": [
             "dp-agent=dp.agent.cli.cli:main",
+            "bohr-agent=dp.agent.cli.cli:main",
         ],
     },
     project_urls={
