@@ -23,8 +23,8 @@ def fetch():
 @fetch.command()
 @click.option('--type', 
               default='calculation',
-              type=click.Choice(['cloud', 'calculation', 'device'], case_sensitive=False),
-              help='Scaffolding type (cloud/calculation/device)')
+              type=click.Choice(['calculation', 'device'], case_sensitive=False),
+              help='Scaffolding type (calculation/device)')
 def scaffolding(type):
     """Fetch scaffolding for the science agent."""
     click.echo(f"Generating {type} project scaffold...")
