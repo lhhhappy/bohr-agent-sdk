@@ -1,5 +1,5 @@
 """
-Example of using the science-agent-sdk cloud functionality.
+Example of using the bohr-agent-sdk cloud functionality.
 """
 import signal
 import sys

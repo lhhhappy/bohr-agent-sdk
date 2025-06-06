@@ -1,5 +1,5 @@
 """
-Device module for science-agent-sdk.
+Device module for bohr-agent-sdk.
 This module provides base device functionality.
 """
 

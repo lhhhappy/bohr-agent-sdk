@@ -1,5 +1,5 @@
 """
-Cloud service module for science-agent-sdk.
+Cloud service module for bohr-agent-sdk.
 This module provides cloud service functionality for device control and monitoring.
 """
 

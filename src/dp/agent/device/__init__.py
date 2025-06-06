@@ -1,5 +1,5 @@
 """
-Lab module for science-agent-sdk.
+Lab module for bohr-agent-sdk.
 This module provides device control and monitoring functionality.
 """
 

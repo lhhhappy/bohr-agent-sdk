@@ -1,13 +1,13 @@
-# Science Agent SDK
+# Bohrium Science Agent SDK
 
-这是DP Tech的Science Agent SDK，提供了一个命令行工具dp-agent，用于管理科学计算任务。同时提供了Python SDK用于开发自定义的科学计算应用。
+这是DP Tech的Bohrium Science Agent SDK，提供了一个命令行工具dp-agent，用于管理科学计算任务。同时提供了Python SDK用于开发自定义的科学计算应用。
 
 ## 安装
 
 ### Linux/Mac
 
 ```bash
-pip install science-agent-sdk --upgrade
+pip install bohr-agent-sdk --upgrade
 ```
 
 ### Windows
@@ -15,7 +15,7 @@ pip install science-agent-sdk --upgrade
 在PowerShell中运行：
 
 ```powershell
-pip install science-agent-sdk --upgrade
+pip install bohr-agent-sdk --upgrade
 ```
 
 ## CLI 使用方法
@@ -56,7 +56,7 @@ dp-agent run debug
 
 ## SDK 快速入门
 
-Science Agent SDK 提供了两种主要的开发模式：实验室模式（Lab）和云模式（Cloud）。
+Bohrium Science Agent SDK 提供了两种主要的开发模式：实验室模式（Lab）和云模式（Cloud）。
 
 ### 基础结构
 
@@ -117,7 +117,7 @@ class MyDevice(Device):
 
 ```python
 """
-Example of using the science-agent-sdk cloud functionality.
+Example of using the bohr-agent-sdk cloud functionality.
 """
 import signal
 import sys

@@ -1,13 +1,13 @@
-# Science Agent SDK
+# Bohrium Science Agent SDK
 
-This is DP Tech's Science Agent SDK, providing a command-line tool `dp-agent` for managing scientific computing tasks.
+This is DP Tech's Bohrium Science Agent SDK, providing a command-line tool `dp-agent` for managing scientific computing tasks.
 
 ## Installation
 
 ### Linux/Mac
 
 ```bash
-pip install science-agent-sdk --upgrade
+pip install bohr-agent-sdk --upgrade
 ```
 
 ### Windows
@@ -15,7 +15,7 @@ pip install science-agent-sdk --upgrade
 In PowerShell, run:
 
 ```powershell
-pip install science-agent-sdk --upgrade
+pip install bohr-agent-sdk --upgrade
 ```
 
 ## Usage

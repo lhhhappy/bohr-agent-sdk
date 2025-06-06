@@ -1,5 +1,5 @@
 """
-Example of using the science-agent-sdk lab functionality.
+Example of using the bohr-agent-sdk lab functionality.
 """
 import signal
 import sys

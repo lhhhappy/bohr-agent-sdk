@@ -1,5 +1,5 @@
 [project]
-name = "science-agent-sdk"
+name = "bohr-agent-sdk"
 dynamic = ["version"]
 description = "SDK for scientific agents"
 readme = "README.md"
@@ -65,7 +65,7 @@ docs = [
 
 # 完整安装（包含所有功能）
 all = [
-    "science-agent-sdk[lab,cloud,dev,docs,dispatcher,bohrium]",
+    "bohr-agent-sdk[lab,cloud,dev,docs,dispatcher,bohrium]",
 ]
 
 # CLI 入口点配置
@@ -73,9 +73,9 @@ all = [
 dp-agent = "dp.agent.cli.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/dptech-corp/science-agent-sdk"
-repository = "https://github.com/dptech-corp/science-agent-sdk"
-"Bug Reports" = "https://github.com/dptech-corp/science-agent-sdk/issues"
+Homepage = "https://github.com/dptech-corp/bohr-agent-sdk"
+repository = "https://github.com/dptech-corp/bohr-agent-sdk"
+"Bug Reports" = "https://github.com/dptech-corp/bohr-agent-sdk/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]

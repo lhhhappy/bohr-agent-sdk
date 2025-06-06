@@ -1,5 +1,5 @@
 """
-Setup configuration for science-agent-sdk.
+Setup configuration for bohr-agent-sdk.
 """
 from setuptools import setup, find_packages
 
@@ -8,14 +8,14 @@ with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 setup(
-    name="science-agent-sdk",
+    name="bohr-agent-sdk",
     version="0.1.7",
     description="SDK for science agent and mcp tools",
     long_description=long_description,
     long_description_content_type="text/markdown",
     author="Digital Pathology Team",
     # author_email="team@digitalpathology.com",
-    url="https://github.com/dptech-corp/science-agent-sdk/",
+    url="https://github.com/dptech-corp/bohr-agent-sdk/",
     packages=find_packages(where="src"),
     package_dir={"": "src"},
     include_package_data=True,
@@ -63,8 +63,8 @@ setup(
         ],
     },
     project_urls={
-        "Bug Reports": "https://github.com/dptech-corp/science-agent-sdk/issues",
-        "Source": "https://github.com/dptech-corp/science-agent-sdk/",
-        # "Documentation": "https://science-agent-sdk.readthedocs.io/",
+        "Bug Reports": "https://github.com/dptech-corp/bohr-agent-sdk/issues",
+        "Source": "https://github.com/dptech-corp/bohr-agent-sdk/",
+        # "Documentation": "https://bohr-agent-sdk.readthedocs.io/",
     },
 )
