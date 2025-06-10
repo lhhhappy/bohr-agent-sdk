@@ -192,31 +192,3 @@ class DispatcherExecutor(BaseExecutor):
                 submission_dict=json.loads(content))
             submission.run_submission(exit_on_submit=True)
         return None
-
-    async def async_run(self, fn, kwargs, context):
-        info = self.submit(fn, kwargs)
-        job_id = info["job_id"]
-        logger.info("Job submitted (ID: %s)" % job_id)
-        await context.log(level="info", message="Job submitted (ID: %s)"
-                          % job_id)
-        if info.get("extra_info"):
-            await context.log(level="info", message=info["extra_info"])
-        while True:
-            status = self.query_status(job_id)
-            logger.info("Job %s status is %s" % (job_id, status))
-            await context.log(level="info", message="Job status: %s" % status)
-            if status != "Running":
-                break
-            time.sleep(10)
-        if status == "Succeeded":
-            await context.log(level="info", message="Job succeeded.")
-            result = self.get_results(job_id)
-            return {**info, "result": result}
-        elif status == "Failed":
-            await context.log(level="info", message="Job failed.")
-            if os.path.isfile("err"):
-                with open("err", "r") as f:
-                    err_msg = f.read()
-                raise RuntimeError(err_msg)
-            else:
-                raise RuntimeError("Job failed")
