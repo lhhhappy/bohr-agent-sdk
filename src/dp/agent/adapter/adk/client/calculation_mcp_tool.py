@@ -79,12 +79,14 @@ class CalculationMCPTool(MCPTool):
 
     async def run_async(self, args, **kwargs):
         if "executor" not in args:
-            executor = args["executor"] = self.executor
+            args["executor"] = self.executor
         if "storage" not in args:
-            storage = args["storage"] = self.storage
+            args["storage"] = self.storage
         if not self.async_mode:
             return await super().run_async(args=args, **kwargs)
 
+        executor = args["executor"]
+        storage = args["storage"]
         res = await self.submit_tool.run_async(args=args, **kwargs)
         try:
             info = json.loads(res.content[0].text)
