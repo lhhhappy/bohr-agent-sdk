@@ -49,5 +49,4 @@ class BaseExecutor(ABC):
             await context.log(level="info", message="Job succeeded.")
             return {**info, "result": result}
         elif status == "Failed":
-            await context.log(level="info", message="Job failed.")
-            raise RuntimeError(result.get("err_msg", "Job failed"))
+            raise RuntimeError("Job failed.")
