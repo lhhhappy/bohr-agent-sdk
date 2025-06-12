@@ -1,6 +1,5 @@
+import asyncio
 import logging
-import os
-import time
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from typing import Any, Literal, TypedDict
@@ -44,16 +43,11 @@ class BaseExecutor(ABC):
             await context.log(level="info", message="Job status: %s" % status)
             if status != "Running":
                 break
-            time.sleep(10)
+            await asyncio.sleep(10)
+        result = self.get_results(job_id)
         if status == "Succeeded":
             await context.log(level="info", message="Job succeeded.")
-            result = self.get_results(job_id)
             return {**info, "result": result}
         elif status == "Failed":
             await context.log(level="info", message="Job failed.")
-            if os.path.isfile("err"):
-                with open("err", "r") as f:
-                    err_msg = f.read()
-                raise RuntimeError(err_msg)
-            else:
-                raise RuntimeError("Job failed")
+            raise RuntimeError(result.get("err_msg", "Job failed"))

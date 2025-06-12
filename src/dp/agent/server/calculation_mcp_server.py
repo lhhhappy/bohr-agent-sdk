@@ -263,10 +263,10 @@ class CalculationMCPServer:
                 }
 
             self.add_patched_tool(fn, run_job, fn.__name__, is_async=True)
-            # self.add_patched_tool(fn, submit_job, "submit_" + fn.__name__)
-            # self.mcp.add_tool(query_job_status)
-            # self.mcp.add_tool(terminate_job)
-            # self.mcp.add_tool(get_job_results)
+            self.add_patched_tool(fn, submit_job, "submit_" + fn.__name__)
+            self.mcp.add_tool(query_job_status)
+            self.mcp.add_tool(terminate_job)
+            self.mcp.add_tool(get_job_results)
             return fn
         return decorator
 

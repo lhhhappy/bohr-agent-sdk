@@ -185,10 +185,8 @@ class DispatcherExecutor(BaseExecutor):
         if os.path.isfile("results.txt"):
             with open("results.txt", "r") as f:
                 return jsonpickle.loads(f.read())
-        else:
-            machine = Machine.load_from_dict(self.machine)
-            content = machine.context.read_file(job_id + ".json")
-            submission = Submission.deserialize(
-                submission_dict=json.loads(content))
-            submission.run_submission(exit_on_submit=True)
-        return None
+        elif os.path.isfile("err"):
+            with open("err", "r") as f:
+                err_msg = f.read()
+            raise RuntimeError(err_msg)
+        return {}
