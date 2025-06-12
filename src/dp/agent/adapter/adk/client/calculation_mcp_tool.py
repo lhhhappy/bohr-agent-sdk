@@ -90,7 +90,7 @@ class CalculationMCPTool(MCPTool):
             info = json.loads(res.content[0].text)
             job_id = info["job_id"]
         except Exception as e:
-            logger.exception(e)
+            logger.error(str(e))
             return res
         logger.info("Job submitted (ID: %s)" % job_id)
         if info.get("extra_info"):
