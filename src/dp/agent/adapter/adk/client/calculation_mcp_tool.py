@@ -86,8 +86,12 @@ class CalculationMCPTool(MCPTool):
             return await super().run_async(args=args, **kwargs)
 
         res = await self.submit_tool.run_async(args=args, **kwargs)
-        info = json.loads(res.content[0].text)
-        job_id = info["job_id"]
+        try:
+            info = json.loads(res.content[0].text)
+            job_id = info["job_id"]
+        except Exception as e:
+            logger.exception(e)
+            return res
         logger.info("Job submitted (ID: %s)" % job_id)
         if info.get("extra_info"):
             logger.info(info["extra_info"])
@@ -97,7 +101,7 @@ class CalculationMCPTool(MCPTool):
                 args={"job_id": job_id, "executor": executor}, **kwargs)
             status = res.content[0].text
             logger.info("Job %s status is %s" % (job_id, status))
-            if status != "Running":
+            if status in ["Succeeded", "Failed"]:
                 break
             await asyncio.sleep(self.query_interval)
 
