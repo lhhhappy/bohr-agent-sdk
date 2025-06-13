@@ -64,7 +64,7 @@ class LocalExecutor(BaseExecutor):
             raise RuntimeError(err_msg)
         return {}
 
-    async def async_run(self, fn, kwargs, context):
+    async def async_run(self, fn, kwargs, context, trace_id):
         if inspect.iscoroutinefunction(fn):
             result = await fn(**kwargs)
         else:

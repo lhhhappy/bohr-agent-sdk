@@ -1,7 +1,8 @@
 import asyncio
 import json
+import jsonpickle
 import logging
-from typing import List, Optional
+from typing import Callable, List, Optional
 
 from mcp import ClientSession, types
 from google.adk.tools.mcp_tool import MCPTool, MCPToolset
@@ -43,6 +44,7 @@ class CalculationMCPTool(MCPTool):
         terminate_tool: Optional[MCPTool] = None,
         results_tool: Optional[MCPTool] = None,
         query_interval: int = 10,
+        logging_callback: Callable = logging_handler,
     ):
         """Calculation MCP tool
         extended from google.adk.tools.mcp_tool.MCPTool
@@ -62,7 +64,8 @@ class CalculationMCPTool(MCPTool):
             query_tool: The tool of querying job status
             terminate_tool: The tool of terminating job
             results_tool: The tool of getting job results
-            query_interval: time interval of querying job status
+            query_interval: Time interval of querying job status
+            logging_callback: Callback function for server notifications
         """
         self.executor = executor
         self.storage = storage
@@ -72,6 +75,11 @@ class CalculationMCPTool(MCPTool):
         self.terminate_tool = terminate_tool
         self.results_tool = results_tool
         self.query_interval = query_interval
+        self.logging_callback = logging_callback
+
+    async def log(self, level, message):
+        await self.logging_callback(types.LoggingMessageNotificationParams(
+            data=message, level=level.lower()))
 
     async def run_async(self, args, **kwargs):
         if "executor" not in args:
@@ -89,9 +97,9 @@ class CalculationMCPTool(MCPTool):
             return res
         job_id = json.loads(res.content[0].text)["job_id"]
         job_info = res.content[0].job_info
-        logger.info("Job submitted (ID: %s)" % job_id)
+        await self.log("info", "Job submitted (ID: %s)" % job_id)
         if job_info.get("extra_info"):
-            logger.info(job_info["extra_info"])
+            await self.log("info", job_info["extra_info"])
 
         while True:
             res = await self.query_tool.run_async(
@@ -100,7 +108,8 @@ class CalculationMCPTool(MCPTool):
                 logger.error(res.content[0].text)
             else:
                 status = res.content[0].text
-                logger.info("Job %s status is %s" % (job_id, status))
+                await self.log("info", "Job %s status is %s" % (
+                    job_id, status))
                 if status != "Running":
                     break
             await asyncio.sleep(self.query_interval)
@@ -109,9 +118,11 @@ class CalculationMCPTool(MCPTool):
             args={"job_id": job_id, "executor": executor, "storage": storage},
             **kwargs)
         if res.isError:
-            logger.error("Job %s failed: %s" % (job_id, res.content[0].text))
+            await self.log("error", "Job %s failed: %s" % (
+                job_id, res.content[0].text))
         else:
-            logger.info("Job %s results is %s" % (job_id, res.content[0].text))
+            await self.log("info", "Job %s result is %s" % (
+                job_id, jsonpickle.loads(res.content[0].text)))
         res.content[0].job_info = {**job_info,
                                    **getattr(res.content[0], "job_info", {})}
         return res
@@ -124,6 +135,7 @@ class CalculationMCPToolset(MCPToolset):
         storage: Optional[dict] = None,
         executor_map: Optional[dict] = None,
         async_mode: bool = False,
+        logging_callback: Callable = logging_handler,
         **kwargs,
     ):
         """
@@ -143,8 +155,10 @@ class CalculationMCPToolset(MCPToolset):
                 tools
             async_mode: Submit and query until the job finishes, instead of
                 waiting in single connection
+            logging_callback: Callback function for server notifications
         """
         super().__init__(**kwargs)
+        self.logging_callback = logging_callback
         self._mcp_session_manager = MCPSessionManagerWithLoggingCallback(
             connection_params=self._connection_params,
             errlog=self._errlog,
@@ -171,6 +185,7 @@ class CalculationMCPToolset(MCPToolset):
                 query_tool=tools.get("query_job_status"),
                 terminate_tool=tools.get("terminate_job"),
                 results_tool=tools.get("get_job_results"),
+                logging_callback=self.logging_callback,
             )
             calc_tool.__dict__.update(tool.__dict__)
             calc_tools.append(calc_tool)
