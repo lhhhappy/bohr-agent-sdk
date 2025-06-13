@@ -1,3 +1,4 @@
+import asyncio
 import inspect
 import jsonpickle
 import os
@@ -10,9 +11,17 @@ from .base_executor import BaseExecutor
 
 def wrapped_fn(fn, **kwargs):
     pid = os.getpid()
-    results = fn(**kwargs)
+    try:
+        if inspect.iscoroutinefunction(fn):
+            result = asyncio.run(fn(**kwargs))
+        else:
+            result = fn(**kwargs)
+    except Exception as e:
+        with open("err", "w") as f:
+            f.write(str(e))
+        raise e
     with open("%s.txt" % pid, "w") as f:
-        f.write(jsonpickle.dumps(results))
+        f.write(jsonpickle.dumps(result))
 
 
 class LocalExecutor(BaseExecutor):
@@ -49,7 +58,11 @@ class LocalExecutor(BaseExecutor):
         if os.path.isfile("%s.txt" % job_id):
             with open("%s.txt" % job_id, "r") as f:
                 return jsonpickle.loads(f.read())
-        return None
+        elif os.path.isfile("err"):
+            with open("err", "r") as f:
+                err_msg = f.read()
+            raise RuntimeError(err_msg)
+        return {}
 
     async def async_run(self, fn, kwargs, context):
         if inspect.iscoroutinefunction(fn):

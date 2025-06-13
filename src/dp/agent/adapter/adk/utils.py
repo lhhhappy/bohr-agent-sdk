@@ -1,4 +1,5 @@
 import jsonpickle
+import time
 from copy import deepcopy
 from typing import Any, Dict, Optional
 
@@ -19,10 +20,11 @@ def update_session_handler(
     user_args.pop("storage", {})
     results["args"] = user_args
     results["agent_name"] = tool_context.agent_name
+    results["timestamp"] = time.time()
     jobs.append(results)
     artifacts = tool_context.state.get("artifacts", [])
     artifacts = {art["uri"]: art for art in artifacts}
-    for name, art in results["input_artifacts"].items():
+    for name, art in results.get("input_artifacts", {}).items():
         if art["uri"] not in artifacts:
             artifacts[art["uri"]] = {
                 "type": "input",
@@ -30,7 +32,7 @@ def update_session_handler(
                 "job_id": results["job_id"],
                 **art,
             }
-    for name, art in results["output_artifacts"].items():
+    for name, art in results.get("output_artifacts", {}).items():
         if art["uri"] not in artifacts:
             artifacts[art["uri"]] = {
                 "type": "output",

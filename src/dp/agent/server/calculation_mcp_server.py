@@ -159,7 +159,7 @@ class CalculationMCPServer:
         self.preprocess_func = preprocess_func
         self.mcp = FastMCP(*args, **kwargs)
 
-    def add_patched_tool(self, fn, new_fn, name, is_async=False):
+    def add_patched_tool(self, fn, new_fn, name, is_async=False, doc=None):
         # patch the metadata of the tool
         context_kwarg = None
         sig = inspect.signature(fn)
@@ -195,7 +195,7 @@ class CalculationMCPServer:
         tool = Tool(
             fn=new_fn,
             name=name,
-            description=fn.__doc__,
+            description=doc or fn.__doc__,
             parameters=json_schema,
             fn_metadata=func_arg_metadata,
             is_async=is_async,
@@ -263,10 +263,11 @@ class CalculationMCPServer:
                 }
 
             self.add_patched_tool(fn, run_job, fn.__name__, is_async=True)
-            # self.add_patched_tool(fn, submit_job, "submit_" + fn.__name__)
-            # self.mcp.add_tool(query_job_status)
-            # self.mcp.add_tool(terminate_job)
-            # self.mcp.add_tool(get_job_results)
+            self.add_patched_tool(fn, submit_job, "submit_" + fn.__name__,
+                                  doc="Submit a job")
+            self.mcp.add_tool(query_job_status)
+            self.mcp.add_tool(terminate_job)
+            self.mcp.add_tool(get_job_results)
             return fn
         return decorator
 
