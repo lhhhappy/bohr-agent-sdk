@@ -15,7 +15,7 @@ from mcp.server.fastmcp.utilities.func_metadata import _get_typed_signature
 
 from .executor import executor_dict
 from .storage import storage_dict
-from .utils import get_metadata
+from .utils import get_metadata, convert_to_content
 
 logger = logging.getLogger(__name__)
 
@@ -148,10 +148,9 @@ def get_job_results(job_id: str, executor: Optional[dict] = None,
         results, output_artifacts = handle_output_artifacts(
             results, exec_id, storage)
         logger.info("Job %s results is %s" % (job_id, results))
-    return {
-        "result": results,
+    return convert_to_content(results, job_info={
         "output_artifacts": output_artifacts,
-    }
+    })
 
 
 class CalculationMCPServer:
@@ -224,13 +223,13 @@ class CalculationMCPServer:
                     exec_id = res["job_id"]
                     job_id = "%s/%s" % (trace_id, exec_id)
                     logger.info("Job submitted (ID: %s)" % job_id)
-                return {
+                return convert_to_content({"job_id": job_id}, job_info={
                     "trace_id": trace_id,
                     "executor_type": executor_type,
                     "job_id": job_id,
                     "extra_info": res.get("extra_info"),
                     "input_artifacts": input_artifacts,
-                }
+                })
 
             async def run_job(executor: Optional[dict] = None,
                               storage: Optional[dict] = None, **kwargs):
@@ -252,15 +251,14 @@ class CalculationMCPServer:
                         results, exec_id, storage)
                     logger.info("Job %s results is %s" % (job_id, results))
                     await context.log(level="info", message="Job succeeded.")
-                return {
+                return convert_to_content(results, job_info={
                     "trace_id": trace_id,
                     "executor_type": executor_type,
                     "job_id": job_id,
                     "extra_info": res.get("extra_info"),
                     "input_artifacts": input_artifacts,
-                    "result": results,
                     "output_artifacts": output_artifacts,
-                }
+                })
 
             self.add_patched_tool(fn, run_job, fn.__name__, is_async=True)
             self.add_patched_tool(fn, submit_job, "submit_" + fn.__name__,

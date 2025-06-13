@@ -12,32 +12,39 @@ def update_session_handler(
     tool_response: dict,
 ) -> Optional[Dict]:
     """Update session state with job and artifact information."""
-    results = jsonpickle.loads(tool_response.content[0].text)
+    if len(tool_response.content) == 0 \
+            or not hasattr(tool_response.content[0], "text"):
+        return None
+    job_info = getattr(tool_response.content[0], "job_info", {})
+    if tool_response.isError:
+        job_info["err_msg"] = tool_response.content[0].text
+    else:
+        job_info["result"] = jsonpickle.loads(tool_response.content[0].text)
     jobs = tool_context.state.get("jobs", [])
-    results["tool_name"] = tool.name
+    job_info["tool_name"] = tool.name
     user_args = deepcopy(args)
     user_args.pop("executor", {})
     user_args.pop("storage", {})
-    results["args"] = user_args
-    results["agent_name"] = tool_context.agent_name
-    results["timestamp"] = time.time()
-    jobs.append(results)
+    job_info["args"] = user_args
+    job_info["agent_name"] = tool_context.agent_name
+    job_info["timestamp"] = time.time()
+    jobs.append(job_info)
     artifacts = tool_context.state.get("artifacts", [])
     artifacts = {art["uri"]: art for art in artifacts}
-    for name, art in results.get("input_artifacts", {}).items():
+    for name, art in job_info.get("input_artifacts", {}).items():
         if art["uri"] not in artifacts:
             artifacts[art["uri"]] = {
                 "type": "input",
                 "name": name,
-                "job_id": results["job_id"],
+                "job_id": job_info["job_id"],
                 **art,
             }
-    for name, art in results.get("output_artifacts", {}).items():
+    for name, art in job_info.get("output_artifacts", {}).items():
         if art["uri"] not in artifacts:
             artifacts[art["uri"]] = {
                 "type": "output",
                 "name": name,
-                "job_id": results["job_id"],
+                "job_id": job_info["job_id"],
                 **art,
             }
     artifacts = list(artifacts.values())

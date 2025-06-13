@@ -88,33 +88,36 @@ class CalculationMCPTool(MCPTool):
         executor = args["executor"]
         storage = args["storage"]
         res = await self.submit_tool.run_async(args=args, **kwargs)
-        try:
-            info = json.loads(res.content[0].text)
-            job_id = info["job_id"]
-        except Exception as e:
-            logger.error(str(e))
+        if res.isError:
             logger.error(res.content[0].text)
             return res
+        job_id = json.loads(res.content[0].text)["job_id"]
+        job_info = res.content[0].job_info
         logger.info("Job submitted (ID: %s)" % job_id)
-        if info.get("extra_info"):
-            logger.info(info["extra_info"])
+        if job_info.get("extra_info"):
+            logger.info(job_info["extra_info"])
 
         while True:
             res = await self.query_tool.run_async(
                 args={"job_id": job_id, "executor": executor}, **kwargs)
-            status = res.content[0].text
-            logger.info("Job %s status is %s" % (job_id, status))
-            if status in ["Succeeded", "Failed"]:
-                break
+            if res.isError:
+                logger.error(res.content[0].text)
+            else:
+                status = res.content[0].text
+                logger.info("Job %s status is %s" % (job_id, status))
+                if status != "Running":
+                    break
             await asyncio.sleep(self.query_interval)
 
         res = await self.results_tool.run_async(
             args={"job_id": job_id, "executor": executor, "storage": storage},
             **kwargs)
-        if status == "Succeeded":
-            results = json.loads(res.content[0].text)
-            logger.info("Job %s results is %s" % (job_id, results))
-            res.content[0].text = json.dumps({**info, **results})
+        if res.isError:
+            logger.error("Job %s failed: %s" % (job_id, res.content[0].text))
+        else:
+            logger.info("Job %s results is %s" % (job_id, res.content[0].text))
+        res.content[0].job_info = {**job_info,
+                                   **getattr(res.content[0], "job_info", {})}
         return res
 
 
