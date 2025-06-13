@@ -147,7 +147,7 @@ def get_job_results(job_id: str, executor: Optional[dict] = None,
         results = executor.get_results(exec_id)
         results, output_artifacts = handle_output_artifacts(
             results, exec_id, storage)
-        logger.info("Job %s results is %s" % (job_id, results))
+        logger.info("Job %s result is %s" % (job_id, results))
     return convert_to_content(results, job_info={
         "output_artifacts": output_artifacts,
     })
@@ -243,14 +243,16 @@ class CalculationMCPServer:
                     kwargs, input_artifacts = handle_input_artifacts(
                         fn, kwargs, storage)
                     executor_type, executor = init_executor(executor)
-                    res = await executor.async_run(fn, kwargs, context)
+                    res = await executor.async_run(
+                        fn, kwargs, context, trace_id)
                     exec_id = res["job_id"]
                     job_id = "%s/%s" % (trace_id, exec_id)
                     results = res["result"]
                     results, output_artifacts = handle_output_artifacts(
                         results, exec_id, storage)
-                    logger.info("Job %s results is %s" % (job_id, results))
-                    await context.log(level="info", message="Job succeeded.")
+                    logger.info("Job %s result is %s" % (job_id, results))
+                    await context.log(level="info", message="Job %s result is"
+                                      " %s" % (job_id, results))
                 return convert_to_content(results, job_info={
                     "trace_id": trace_id,
                     "executor_type": executor_type,

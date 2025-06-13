@@ -74,12 +74,13 @@ class DispatcherExecutor(BaseExecutor):
         script = ""
         fn_name = fn.__name__
         module_name = fn.__module__
+        import_func_line = None
         if module_name in ["__main__", "__mp_main__"]:
             module = sys.modules[module_name]
             if hasattr(module, "__file__"):
                 self.python_packages.append(module.__file__)
                 name = os.path.splitext(os.path.basename(module.__file__))[0]
-                script += "from %s import %s\n" % (name, fn_name)
+                import_func_line = "from %s import %s\n" % (name, fn_name)
             else:
                 script += get_source_code(fn)
         else:
@@ -89,13 +90,15 @@ class DispatcherExecutor(BaseExecutor):
                 self.python_packages.extend(module.__path__)
             elif hasattr(module, "__file__"):
                 self.python_packages.append(module.__file__)
-            script += "from %s import %s\n" % (module_name, fn_name)
+            import_func_line = "from %s import %s\n" % (module_name, fn_name)
 
         script += "import asyncio, jsonpickle\n\n"
         script += "if __name__ == \"__main__\":\n"
         script += "    kwargs = jsonpickle.loads(r'''%s''')\n" % \
             jsonpickle.dumps(kwargs)
         script += "    try:\n"
+        if import_func_line is not None:
+            script += "        " + import_func_line
         if inspect.iscoroutinefunction(fn):
             script += "        results = asyncio.run(%s(**kwargs))\n" % fn_name
         else:
