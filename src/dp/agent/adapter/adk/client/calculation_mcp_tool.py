@@ -6,13 +6,9 @@ from typing import List, Optional
 from mcp import ClientSession, types
 from google.adk.tools.mcp_tool import MCPTool, MCPToolset
 from google.adk.tools.mcp_tool.mcp_session_manager import MCPSessionManager
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
-handler = logging.StreamHandler()
-handler.setLevel(logging.INFO)
-handler.setFormatter(
-    logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
-logger.addHandler(handler)
+
+from ..utils import get_logger
+logger = get_logger(__name__)
 
 
 async def logging_handler(
