@@ -162,7 +162,7 @@ class CalculationMCPToolset(MCPToolset):
         self._mcp_session_manager = MCPSessionManagerWithLoggingCallback(
             connection_params=self._connection_params,
             errlog=self._errlog,
-            logging_callback=logging_handler,
+            logging_callback=logging_callback,
         )
         self.executor = executor
         self.storage = storage
