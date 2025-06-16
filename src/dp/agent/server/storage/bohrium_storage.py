@@ -21,6 +21,10 @@ config = {
     "ticket": os.environ.get("BOHRIUM_TICKET"),
     "upload_progress": os.environ.get("BOHRIUM_UPLOAD_PROGRESS") in [
         "true", "1"],
+    "access_key": os.environ.get("BOHRIUM_ACCESS_KEY"),
+    "openapi_url": os.environ.get("BOHRIUM_OPENAPI_URL",
+                                  "https://openapi.dp.tech"),
+    "app_key": os.environ.get("BOHRIUM_APP_KEY", "agent"),
 }
 
 
@@ -76,6 +80,9 @@ class BohriumStorage(BaseStorage):
             userSharePath: Optional[str] = None,
             tiefblue_url: Optional[str] = None,
             ticket: Optional[str] = None,
+            access_key: Optional[str] = None,
+            openapi_url: Optional[str] = None,
+            app_key: Optional[str] = None,
     ) -> None:
         """Bohrium storage interface
 
@@ -108,6 +115,11 @@ class BohriumStorage(BaseStorage):
         self.prefix = prefix
         self.sharePath = sharePath
         self.userSharePath = userSharePath
+        self.access_key = access_key if access_key is not None else \
+            config["access_key"]
+        self.openapi_url = openapi_url if openapi_url is not None else \
+            config["openapi_url"]
+        self.app_key = app_key if app_key is not None else config["app_key"]
         if self.token is None:
             self.get_token()
 
@@ -120,7 +132,11 @@ class BohriumStorage(BaseStorage):
         params = {
             "projectId": self.project_id,
         }
-        if self.ticket is not None:
+        if self.access_key is not None:
+            url = self.openapi_url + "/openapi/v1/storage/token"
+            headers = {"x-app-key": self.app_key}
+            params["accessKey"] = self.access_key
+        elif self.ticket is not None:
             headers["Brm-Ticket"] = config["ticket"]
         else:
             if self.authorization is None:
