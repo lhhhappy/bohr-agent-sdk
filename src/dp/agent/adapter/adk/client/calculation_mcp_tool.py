@@ -39,6 +39,7 @@ class CalculationMCPTool(MCPTool):
         executor: Optional[dict] = None,
         storage: Optional[dict] = None,
         async_mode: bool = False,
+        wait: bool = True,
         submit_tool: Optional[MCPTool] = None,
         query_tool: Optional[MCPTool] = None,
         terminate_tool: Optional[MCPTool] = None,
@@ -60,6 +61,7 @@ class CalculationMCPTool(MCPTool):
                 corresponding storage type.
             async_mode: Submit and query until the job finishes, instead of
                 waiting in single connection
+            wait: Wait for the job to finish or directly return
             submit_tool: The tool of submitting job
             query_tool: The tool of querying job status
             terminate_tool: The tool of terminating job
@@ -75,6 +77,7 @@ class CalculationMCPTool(MCPTool):
         self.terminate_tool = terminate_tool
         self.results_tool = results_tool
         self.query_interval = query_interval
+        self.wait = wait
         self.logging_callback = logging_callback
 
     async def log(self, level, message):
@@ -100,6 +103,8 @@ class CalculationMCPTool(MCPTool):
         await self.log("info", "Job submitted (ID: %s)" % job_id)
         if job_info.get("extra_info"):
             await self.log("info", job_info["extra_info"])
+            if not self.wait:
+                return job_info['extra_info']
 
         while True:
             res = await self.query_tool.run_async(
@@ -135,6 +140,7 @@ class CalculationMCPToolset(MCPToolset):
         storage: Optional[dict] = None,
         executor_map: Optional[dict] = None,
         async_mode: bool = False,
+        wait: bool = True,
         logging_callback: Callable = logging_handler,
         **kwargs,
     ):
@@ -166,6 +172,7 @@ class CalculationMCPToolset(MCPToolset):
         )
         self.executor = executor
         self.storage = storage
+        self.wait = wait
         self.executor_map = executor_map or {}
         self.async_mode = async_mode
 
@@ -181,6 +188,7 @@ class CalculationMCPToolset(MCPToolset):
                 executor=self.executor_map.get(tool.name, self.executor),
                 storage=self.storage,
                 async_mode=self.async_mode,
+                wait=self.wait,
                 submit_tool=tools.get("submit_" + tool.name),
                 query_tool=tools.get("query_job_status"),
                 terminate_tool=tools.get("terminate_job"),
