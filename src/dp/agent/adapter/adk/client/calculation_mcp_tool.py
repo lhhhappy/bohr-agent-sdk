@@ -2,10 +2,9 @@ import asyncio
 import json
 import jsonpickle
 import logging
-from typing import Callable, List, Optional, Any
+from typing import Callable, List, Optional
 
 from mcp import ClientSession, types
-from google.adk.tools.tool_context import ToolContext
 from google.adk.tools.mcp_tool import MCPTool, MCPToolset
 from google.adk.tools.mcp_tool.mcp_session_manager import MCPSessionManager
 
@@ -15,7 +14,6 @@ logger = get_logger(__name__)
 
 async def logging_handler(
     params: types.LoggingMessageNotificationParams,
-    tool_context: ToolContext,
 ) -> None:
     logger.log(getattr(logging, params.level.upper()), params.data)
 
@@ -41,13 +39,13 @@ class CalculationMCPTool(MCPTool):
         executor: Optional[dict] = None,
         storage: Optional[dict] = None,
         async_mode: bool = False,
-        wait: bool = True,
         submit_tool: Optional[MCPTool] = None,
         query_tool: Optional[MCPTool] = None,
         terminate_tool: Optional[MCPTool] = None,
         results_tool: Optional[MCPTool] = None,
         query_interval: int = 10,
         logging_callback: Callable = logging_handler,
+        long_running: bool = False,
     ):
         """Calculation MCP tool
         extended from google.adk.tools.mcp_tool.MCPTool
@@ -63,7 +61,6 @@ class CalculationMCPTool(MCPTool):
                 corresponding storage type.
             async_mode: Submit and query until the job finishes, instead of
                 waiting in single connection
-            wait: Wait for the job to finish or directly return
             submit_tool: The tool of submitting job
             query_tool: The tool of querying job status
             terminate_tool: The tool of terminating job
@@ -79,44 +76,48 @@ class CalculationMCPTool(MCPTool):
         self.terminate_tool = terminate_tool
         self.results_tool = results_tool
         self.query_interval = query_interval
-        self.wait = wait
         self.logging_callback = logging_callback
+        self.long_running = long_running
 
-    async def log(self, level: str, tool_context: ToolContext, message: Any):
+    async def log(self, level, message):
         await self.logging_callback(types.LoggingMessageNotificationParams(
-            data=message, level=level.lower()), tool_context=tool_context)
+            data=message, level=level.lower()))
 
-    async def run_async(self, args, tool_context: ToolContext, **kwargs):
-        # TODO: add progress callback when run_async
+    async def run_async(self, args, **kwargs):
         if "executor" not in args:
             args["executor"] = self.executor
         if "storage" not in args:
             args["storage"] = self.storage
-        if not self.async_mode:
-            return await super().run_async(args=args, tool_context=tool_context, **kwargs)
+        if not self.async_mode and not self.long_running:
+            return await super().run_async(args=args, **kwargs)
 
         executor = args["executor"]
         storage = args["storage"]
-        res = await self.submit_tool.run_async(args=args, tool_context=tool_context, **kwargs)
+        res = await self.submit_tool.run_async(args=args, **kwargs)
         if res.isError:
             logger.error(res.content[0].text)
             return res
         job_id = json.loads(res.content[0].text)["job_id"]
         job_info = res.content[0].job_info
-        await self.log("info", tool_context, "Job submitted (ID: %s)" % job_id)
+        await self.log("info", "Job submitted (ID: %s)" % job_id)
         if job_info.get("extra_info"):
-            await self.log("info", tool_context, job_info["extra_info"])
-            if not self.wait:
-                return job_info['extra_info']
+            await self.log("info", job_info["extra_info"])
+        if self.long_running:
+            res.content[0].text = json.dumps({
+                "job_id": job_id,
+                "status": "Running",
+                "extra_info": job_info.get("extra_info"),
+            })
+            return res
 
         while True:
             res = await self.query_tool.run_async(
-                args={"job_id": job_id, "executor": executor}, tool_context=tool_context, **kwargs)
+                args={"job_id": job_id, "executor": executor}, **kwargs)
             if res.isError:
                 logger.error(res.content[0].text)
             else:
                 status = res.content[0].text
-                await self.log("info", tool_context, "Job %s status is %s" % (
+                await self.log("info", "Job %s status is %s" % (
                     job_id, status))
                 if status != "Running":
                     break
@@ -124,13 +125,12 @@ class CalculationMCPTool(MCPTool):
 
         res = await self.results_tool.run_async(
             args={"job_id": job_id, "executor": executor, "storage": storage},
-            tool_context=tool_context,
             **kwargs)
         if res.isError:
-            await self.log("error", tool_context, "Job %s failed: %s" % (
+            await self.log("error", "Job %s failed: %s" % (
                 job_id, res.content[0].text))
         else:
-            await self.log("info", tool_context, "Job %s result is %s" % (
+            await self.log("info", "Job %s result is %s" % (
                 job_id, jsonpickle.loads(res.content[0].text)))
         res.content[0].job_info = {**job_info,
                                    **getattr(res.content[0], "job_info", {})}
@@ -144,8 +144,8 @@ class CalculationMCPToolset(MCPToolset):
         storage: Optional[dict] = None,
         executor_map: Optional[dict] = None,
         async_mode: bool = False,
-        wait: bool = True,
         logging_callback: Callable = logging_handler,
+        long_running: bool = False,
         **kwargs,
     ):
         """
@@ -176,13 +176,19 @@ class CalculationMCPToolset(MCPToolset):
         )
         self.executor = executor
         self.storage = storage
-        self.wait = wait
         self.executor_map = executor_map or {}
         self.async_mode = async_mode
+        self.long_running = long_running
+        self.query_tool = None
+        self.terminate_tool = None
+        self.results_tool = None
 
     async def get_tools(self, *args, **kwargs) -> List[CalculationMCPTool]:
         tools = await super().get_tools(*args, **kwargs)
         tools = {tool.name: tool for tool in tools}
+        self.query_tool = tools.get("query_job_status")
+        self.terminate_tool = tools.get("terminate_job")
+        self.results_tool = tools.get("get_job_results")
         calc_tools = []
         for tool in tools.values():
             if tool.name.startswith("submit_") or tool.name in [
@@ -192,13 +198,14 @@ class CalculationMCPToolset(MCPToolset):
                 executor=self.executor_map.get(tool.name, self.executor),
                 storage=self.storage,
                 async_mode=self.async_mode,
-                wait=self.wait,
                 submit_tool=tools.get("submit_" + tool.name),
                 query_tool=tools.get("query_job_status"),
                 terminate_tool=tools.get("terminate_job"),
                 results_tool=tools.get("get_job_results"),
                 logging_callback=self.logging_callback,
+                long_running=self.long_running,
             )
             calc_tool.__dict__.update(tool.__dict__)
+            calc_tool.is_long_running = self.long_running
             calc_tools.append(calc_tool)
         return calc_tools
