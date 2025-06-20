@@ -40,6 +40,9 @@ def update_session_handler(
         job_info["err_msg"] = err_msg
     else:
         job_info["result"] = jsonpickle.loads(tool_response.content[0].text)
+        # do not handle long running job here
+        if "job_id" in job_info["result"]:
+            return None
     jobs = tool_context.state.get("jobs", [])
     job_info["tool_name"] = tool.name
     user_args = deepcopy(args)
