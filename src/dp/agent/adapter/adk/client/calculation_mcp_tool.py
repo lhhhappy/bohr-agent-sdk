@@ -216,3 +216,68 @@ class CalculationMCPToolset(MCPToolset):
             calc_tool.is_long_running = not self.wait
             calc_tools.append(calc_tool)
         return calc_tools
+
+
+class BackgroundJobWatcher:
+    def __init__(self, toolset: "CalculationMCPToolset"):
+        self.long_running_ids = []
+        self.long_running_jobs = {}
+        self.status = {}
+        self.toolset = toolset
+
+    def record_event(self, event):
+        if event.long_running_tool_ids:
+            self.long_running_ids += event.long_running_tool_ids
+
+        if event.content and event.content.parts:
+            for part in event.content.parts:
+                if (
+                    part
+                    and part.function_response
+                    and part.function_response.id in self.long_running_ids
+                    and "result" in part.function_response.response
+                    and not part.function_response.response["result"].isError
+                ):
+                    result = part.function_response.response["result"]
+                    results = json.loads(result.content[0].text)
+                    job_id = results["job_id"]
+                    self.long_running_jobs[job_id] = part.function_response
+                    self.status[job_id] = "Running"
+
+    async def watch_jobs(self):
+        for job_id in self.status.keys():
+            if self.status[job_id] != "Running":
+                continue
+            res = await self.toolset.query_tool.run_async(
+                args={"job_id": job_id, "executor": self.toolset.executor},
+                tool_context=None)
+            if res.isError:
+                logger.error(res.content[0].text)
+                continue
+            status = res.content[0].text
+            if status != "Running":
+                res = await self.toolset.results_tool.run_async(
+                    args={"job_id": job_id, "executor": self.toolset.executor,
+                          "storage": self.toolset.storage},
+                    tool_context=None)
+                job_info = getattr(res.content[0], "job_info", {})
+                response = self.long_running_jobs[job_id]
+                if res.isError:
+                    err_msg = res.content[0].text
+                    if err_msg.startswith("Error executing tool"):
+                        err_msg = err_msg[err_msg.find(":")+2:]
+                    result = f"Error executing tool {response.name}: {err_msg}"
+                else:
+                    result = res.content[0].text
+                res = response.response["result"]
+                job_info.update(getattr(res.content[0], "job_info", {}))
+                res.content[0].job_info = job_info
+                res.content[0].text = result
+            self.status[job_id] = status
+            yield job_id, status
+
+    def get_response(self, job_id):
+        return self.long_running_jobs[job_id]
+
+    def get_status(self, job_id):
+        return self.status[job_id]
