@@ -29,6 +29,11 @@ def wrapped_fn(fn, kwargs, env):
 
 class LocalExecutor(BaseExecutor):
     def __init__(self, env: Optional[Dict[str, str]] = None):
+        """
+        Execute the tool locally
+        Args:
+            env: The environmental variables at run time
+        """
         self.env = env or {}
 
     def submit(self, fn, kwargs):
