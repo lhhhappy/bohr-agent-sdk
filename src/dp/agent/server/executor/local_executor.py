@@ -1,8 +1,10 @@
 import asyncio
+import importlib
 import inspect
 import jsonpickle
 import os
 import psutil
+import sys
 import uuid
 from multiprocessing import Process
 from typing import Dict, Optional
@@ -10,9 +12,7 @@ from typing import Dict, Optional
 from .base_executor import BaseExecutor
 
 
-def wrapped_fn(fn, kwargs, env):
-    for k, v in env.items():
-        os.environ[k] = v
+def wrapped_fn(fn, kwargs):
     pid = os.getpid()
     try:
         if inspect.iscoroutinefunction(fn):
@@ -27,6 +27,16 @@ def wrapped_fn(fn, kwargs, env):
         f.write(jsonpickle.dumps(result))
 
 
+def reload_dflow_config():
+    if "dflow.config" in sys.modules:
+        config = sys.modules["dflow"].config
+        s3_config = sys.modules["dflow"].s3_config
+        importlib.reload(sys.modules["dflow.config"])
+        importlib.reload(sys.modules["dflow"])
+        config.update(sys.modules["dflow"].config)
+        s3_config.update(sys.modules["dflow"].s3_config)
+
+
 class LocalExecutor(BaseExecutor):
     def __init__(self, env: Optional[Dict[str, str]] = None):
         """
@@ -36,11 +46,27 @@ class LocalExecutor(BaseExecutor):
         """
         self.env = env or {}
 
+    def set_env(self):
+        old_env = {}
+        for k, v in self.env.items():
+            if k in os.environ:
+                old_env[k] = os.environ[k]
+            os.environ[k] = v
+        return old_env
+
+    def recover_env(self, old_env):
+        for k, v in self.env.items():
+            if k in old_env:
+                os.environ[k] = old_env[k]
+            else:
+                del os.environ[k]
+
     def submit(self, fn, kwargs):
         os.environ["DP_AGENT_RUNNING_MODE"] = "1"
-        p = Process(target=wrapped_fn, kwargs={
-            "fn": fn, "kwargs": kwargs, "env": self.env})
+        old_env = self.set_env()
+        p = Process(target=wrapped_fn, kwargs={"fn": fn, "kwargs": kwargs})
         p.start()
+        self.recover_env(old_env)
         return {"job_id": str(p.pid)}
 
     def query_status(self, job_id):
@@ -75,22 +101,16 @@ class LocalExecutor(BaseExecutor):
 
     async def async_run(self, fn, kwargs, context, trace_id):
         os.environ["DP_AGENT_RUNNING_MODE"] = "1"
-        old_env = {}
-        for k, v in self.env.items():
-            if k in os.environ:
-                old_env[k] = os.environ[k]
-            os.environ[k] = v
+        old_env = self.set_env()
         try:
+            # explicitly reload dflow config in sync mode
+            reload_dflow_config()
             if inspect.iscoroutinefunction(fn):
                 result = await fn(**kwargs)
             else:
                 result = fn(**kwargs)
         finally:
-            for k, v in self.env.items():
-                if k in old_env:
-                    os.environ[k] = old_env[k]
-                else:
-                    del os.environ[k]
+            self.recover_env(old_env)
         return {
             "job_id": str(uuid.uuid4()),
             "result": result,
