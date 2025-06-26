@@ -16,6 +16,8 @@ config = {
     "username": os.environ.get("BOHRIUM_USERNAME", ""),
     "password": os.environ.get("BOHRIUM_PASSWORD", ""),
     "project_id": os.environ.get("BOHRIUM_PROJECT_ID", ""),
+    "access_key": os.environ.get("BOHRIUM_ACCESS_KEY", ""),
+    "app_key": os.environ.get("BOHRIUM_APP_KEY", "agent"),
 }
 logger = logging.getLogger(__name__)
 
@@ -64,6 +66,14 @@ class DispatcherExecutor(BaseExecutor):
                 remote_profile["password"] = config["password"]
             if "program_id" not in remote_profile:
                 remote_profile["program_id"] = int(config["project_id"])
+        elif self.machine.get("context_type") == "OpenAPI":
+            remote_profile = self.machine["remote_profile"]
+            if "access_key" not in remote_profile:
+                remote_profile["access_key"] = config["access_key"]
+            if "project_id" not in remote_profile:
+                remote_profile["project_id"] = int(config["project_id"])
+            if "app_key" not in remote_profile:
+                remote_profile["app_key"] = config["app_key"]
         if "group_size" not in self.resources:
             self.resources["group_size"] = 1
         if "envs" not in self.resources:
@@ -135,6 +145,8 @@ class DispatcherExecutor(BaseExecutor):
 
         if self.machine.get("context_type") == "Bohrium":
             self.machine["remote_profile"]["input_data"]["job_name"] = fn_name
+        elif self.machine.get("context_type") == "OpenAPI":
+            self.machine["remote_profile"]["job_name"] = fn_name
         # ensure submitting a new job
         self.resources["envs"]["SUBMISSION_TIMESTAMP"] = str(time.time())
 
@@ -152,6 +164,15 @@ class DispatcherExecutor(BaseExecutor):
             extra_info = {
                 "bohr_job_id": bohr_job_id,
                 "bohr_group_id": bohr_group_id,
+                "job_link": "https://bohrium.dp.tech/jobs/detail/%s" %
+                bohr_job_id,
+            }
+            logger.info(extra_info)
+            res["extra_info"] = extra_info
+        elif self.machine.get("context_type") == "OpenAPI":
+            bohr_job_id = submission.belonging_jobs[0].job_id
+            extra_info = {
+                "bohr_job_id": bohr_job_id,
                 "job_link": "https://bohrium.dp.tech/jobs/detail/%s" %
                 bohr_job_id,
             }
