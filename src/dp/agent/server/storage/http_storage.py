@@ -5,12 +5,18 @@ import requests
 
 from .base_storage import BaseStorage
 
+config = {
+    "plugin_type": os.environ.get("HTTP_PLUGIN_TYPE"),
+}
+
 
 class HTTPStorage(BaseStorage):
     scheme = "http"
 
     def __init__(self, plugin: dict = None):
         self.plugin = None
+        if plugin is None and config["plugin_type"] is not None:
+            plugin = {"type": config["plugin_type"]}
         if plugin is not None:
             from . import storage_dict
             storage_type = plugin.pop("type")
