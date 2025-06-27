@@ -9,11 +9,20 @@ from .base_storage import BaseStorage
 class HTTPStorage(BaseStorage):
     scheme = "http"
 
-    def __init__(self):
-        pass
+    def __init__(self, plugin: dict = None):
+        self.plugin = None
+        if plugin is not None:
+            from . import storage_dict
+            storage_type = plugin.pop("type")
+            self.plugin = storage_dict[storage_type](**plugin)
 
     def _upload(self, key, path):
-        raise NotImplementedError()
+        if self.plugin is not None:
+            key = self.plugin._upload(key, path)
+            url = self.plugin.get_http_url(key)
+            return url.split("://")[1]
+        else:
+            raise NotImplementedError()
 
     def _download(self, key, path):
         os.makedirs(os.path.dirname(path), exist_ok=True)

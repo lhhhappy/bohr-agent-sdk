@@ -3,6 +3,7 @@ import logging
 import os
 from collections.abc import Callable
 from contextlib import contextmanager
+from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse
@@ -33,7 +34,7 @@ def parse_uri(uri):
 def init_storage(storage_config: Optional[dict] = None):
     if storage_config is None:
         storage_config = {"type": "local"}
-    storage_config = storage_config.copy()
+    storage_config = deepcopy(storage_config)
     storage_type = storage_config.pop("type")
     storage = storage_dict[storage_type](**storage_config)
     return storage_type, storage
@@ -42,7 +43,7 @@ def init_storage(storage_config: Optional[dict] = None):
 def init_executor(executor_config: Optional[dict] = None):
     if executor_config is None:
         executor_config = {"type": "local"}
-    executor_config = executor_config.copy()
+    executor_config = deepcopy(executor_config)
     executor_type = executor_config.pop("type")
     return executor_type, executor_dict[executor_type](**executor_config)
 
