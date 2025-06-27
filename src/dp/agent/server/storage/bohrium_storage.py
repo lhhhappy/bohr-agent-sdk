@@ -124,7 +124,6 @@ class BohriumStorage(BaseStorage):
             self.get_token()
 
     def get_token(self, retry=1):
-        import requests
         url = self.bohrium_url + "/brm/v1/storage/token"
         headers = {
             "Content-type": "application/json",
@@ -252,3 +251,18 @@ class BohriumStorage(BaseStorage):
             else:
                 raise e
         return meta["entityTag"] if "entityTag" in meta else ""
+
+    def get_http_url(self, key):
+        url = self.tiefblue_url + "/api/setacl"
+        headers = {
+            "Content-type": "application/json",
+            "Authorization": "Bearer " + self.token,
+        }
+        params = {
+            "acl": "public-read",
+            "path": key,
+        }
+        rsp = requests.post(url, headers=headers, json=params)
+        res = json.loads(rsp.text)
+        _raise_error(res, "get HTTP url")
+        return res["data"]["url"]
