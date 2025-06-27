@@ -34,7 +34,7 @@ class BaseStorage(ABC):
     def download(self, key: str, path: str) -> str:
         objs = self.list(prefix=key, recursive=True)
         if objs == [key]:
-            path = os.path.join(path, os.path.basename(key))
+            path = os.path.join(path, os.path.basename(key.split("?")[0]))
             self._download(key=key, path=path)
             if path[-4:] == ".tgz":
                 path = extract(path)
