@@ -1,5 +1,4 @@
 import inspect
-import logging
 import os
 from collections.abc import Callable
 from contextlib import contextmanager
@@ -11,14 +10,12 @@ from typing import Literal, Optional, get_origin
 
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.server import Context
-from mcp.server.fastmcp.tools.base import Tool
 from mcp.server.fastmcp.utilities.func_metadata import _get_typed_signature
 
 from .executor import executor_dict
 from .storage import storage_dict
-from .utils import get_metadata, convert_to_content
-
-logger = logging.getLogger(__name__)
+from .utils import get_logger, get_metadata, convert_to_content, Tool
+logger = get_logger(__name__)
 
 
 def parse_uri(uri):
@@ -204,6 +201,12 @@ class CalculationMCPServer:
         )
         self.mcp._tool_manager._tools[name] = tool
 
+    def add_tool(self, fn, *args, **kwargs):
+        self.mcp.add_tool(fn, *args, **kwargs)
+        tool = Tool.from_function(fn, *args, **kwargs)
+        self.mcp._tool_manager._tools[tool.name] = tool
+        return tool
+
     def tool(self, preprocess_func=None):
         if preprocess_func is None:
             preprocess_func = self.preprocess_func
@@ -266,9 +269,9 @@ class CalculationMCPServer:
             self.add_patched_tool(fn, run_job, fn.__name__, is_async=True)
             self.add_patched_tool(fn, submit_job, "submit_" + fn.__name__,
                                   doc="Submit a job")
-            self.mcp.add_tool(query_job_status)
-            self.mcp.add_tool(terminate_job)
-            self.mcp.add_tool(get_job_results)
+            self.add_tool(query_job_status)
+            self.add_tool(terminate_job)
+            self.add_tool(get_job_results)
             return fn
         return decorator
 

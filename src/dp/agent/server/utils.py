@@ -1,8 +1,11 @@
 import inspect
+import logging
+import traceback
 from collections.abc import Sequence
 from typing import Annotated, Any, List, Optional
 
 import jsonpickle
+import mcp
 from mcp.server.fastmcp.exceptions import InvalidSignature
 from mcp.server.fastmcp.utilities.func_metadata import (
     ArgModelBase,
@@ -18,6 +21,17 @@ from mcp.types import (
 from pydantic import Field, WithJsonSchema, create_model
 from pydantic.fields import FieldInfo
 from pydantic_core import PydanticUndefined
+
+
+def get_logger(name, level="INFO",
+               format="%(asctime)s - %(levelname)s - %(message)s"):
+    logger = logging.getLogger(name)
+    logger.setLevel(getattr(logging, level.upper()))
+    handler = logging.StreamHandler()
+    handler.setLevel(getattr(logging, level.upper()))
+    handler.setFormatter(logging.Formatter(format))
+    logger.addHandler(handler)
+    return logger
 
 
 def get_metadata(
@@ -114,3 +128,16 @@ def convert_to_content(
 
     return [TextContent(type="text", text=result, job_info=job_info)] \
         + other_contents
+
+
+class Tool(mcp.server.fastmcp.tools.Tool):
+    """
+    Workaround MCP server cannot print traceback
+    Remove this if MCP has proper support
+    """
+    async def run(self, *args, **kwargs):
+        try:
+            return await super().run(*args, **kwargs)
+        except Exception as e:
+            traceback.print_exc()
+            raise e
