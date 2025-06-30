@@ -2,6 +2,7 @@ import asyncio
 import json
 import jsonpickle
 import logging
+from copy import deepcopy
 from typing import Callable, List, Optional, Any
 
 from mcp import ClientSession, types
@@ -88,6 +89,7 @@ class CalculationMCPTool(MCPTool):
 
     async def run_async(self, args, tool_context: ToolContext, **kwargs):
         # TODO: add progress callback when run_async
+        args = deepcopy(args)
         if "executor" not in args:
             args["executor"] = self.executor
         if "storage" not in args:
