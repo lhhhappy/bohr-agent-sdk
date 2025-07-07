@@ -38,9 +38,12 @@ def reload_dflow_config():
             importlib.reload(sys.modules["dflow.plugins.bohrium"])
         importlib.reload(sys.modules["dflow"])
         config.update(sys.modules["dflow"].config)
+        sys.modules["dflow"].config = config
         s3_config.update(sys.modules["dflow"].s3_config)
+        sys.modules["dflow"].s3_config = s3_config
         if "dflow.plugins.bohrium" in sys.modules:
             bohrium_config.update(sys.modules["dflow.plugins.bohrium"].config)
+            sys.modules["dflow.plugins.bohrium"].config = bohrium_config
 
 
 class LocalExecutor(BaseExecutor):
