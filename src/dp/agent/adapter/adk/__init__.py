@@ -3,8 +3,12 @@ from .client import (
     CalculationMCPToolset,
     BackgroundJobWatcher,
 )
-from .utils import search_error_in_memory_handler, update_session_handler
+from .utils import (
+    search_error_in_memory_handler,
+    update_session_handler,
+    extract_job_info,
+)
 
 __all__ = ["CalculationMCPTool", "CalculationMCPToolset",
            "update_session_handler", "search_error_in_memory_handler",
-           "BackgroundJobWatcher"]
+           "BackgroundJobWatcher", "extract_job_info"]

@@ -31,7 +31,10 @@ config = {
 def _raise_error(res, op):
     if res["code"] not in succ_code:
         if "error" in res:
-            raise RuntimeError("%s failed: %s" % (op, res["error"]["msg"]))
+            if isinstance(res["error"], str):
+                raise RuntimeError("%s failed: %s" % (op, res["error"]))
+            else:
+                raise RuntimeError("%s failed: %s" % (op, res["error"]["msg"]))
         elif "message" in res:
             raise RuntimeError("%s failed: %s" % (op, res["message"]))
         else:

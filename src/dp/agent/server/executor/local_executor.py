@@ -31,10 +31,16 @@ def reload_dflow_config():
     if "dflow.config" in sys.modules:
         config = sys.modules["dflow"].config
         s3_config = sys.modules["dflow"].s3_config
+        s3_config["storage_client"] = None
         importlib.reload(sys.modules["dflow.config"])
+        if "dflow.plugins.bohrium" in sys.modules:
+            bohrium_config = sys.modules["dflow.plugins.bohrium"].config
+            importlib.reload(sys.modules["dflow.plugins.bohrium"])
         importlib.reload(sys.modules["dflow"])
         config.update(sys.modules["dflow"].config)
         s3_config.update(sys.modules["dflow"].s3_config)
+        if "dflow.plugins.bohrium" in sys.modules:
+            bohrium_config.update(sys.modules["dflow.plugins.bohrium"].config)
 
 
 class LocalExecutor(BaseExecutor):
