@@ -3,8 +3,10 @@ import jsonpickle
 import logging
 import time
 from copy import deepcopy
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
+from mcp import types
+from google.adk.events import Event
 from google.adk.tools.base_tool import BaseTool
 from google.adk.tools.tool_context import ToolContext
 
@@ -109,3 +111,64 @@ def search_error_in_memory_handler(toolset):
                 return tool_response
         return None
     return func
+
+
+def extract_job_info(events: List[Event]) -> dict:
+    jobs = {}
+    artifacts = {}
+    for event in events:
+        if event.content and event.content.parts:
+            for part in event.content.parts:
+                if part.function_call is not None:
+                    call = part.function_call
+                    if call.id not in jobs:
+                        jobs[call.id] = {
+                            "tool_name": call.name,
+                            "args": call.args,
+                            "agent_name": event.author,
+                        }
+                if part.function_response is not None:
+                    resp = part.function_response
+                    if resp.id not in jobs:
+                        jobs[resp.id] = {
+                            "tool_name": resp.name
+                        }
+                    job = jobs[resp.id]
+                    job["timestamp"] = event.timestamp
+                    if "result" in resp.response and isinstance(
+                            resp.response["result"], types.CallToolResult):
+                        res = resp.response["result"]
+                        if res.isError:
+                            err_msg = res.content[0].text
+                            if err_msg.startswith("Error executing tool"):
+                                err_msg = err_msg[err_msg.find(":")+2:]
+                            job["err_msg"] = err_msg
+                        else:
+                            result = jsonpickle.loads(res.content[0].text)
+                            if "job_id" not in result:
+                                job["result"] = result
+                    if hasattr(res.content[0], "job_info"):
+                        job_info = res.content[0].job_info
+                        job.update(job_info)
+                        for name, art in job_info.get(
+                                "input_artifacts", {}).items():
+                            if art["uri"] not in artifacts:
+                                artifacts[art["uri"]] = {
+                                    "type": "input",
+                                    "name": name,
+                                    "job_id": job_info["job_id"],
+                                    **art,
+                                }
+                        for name, art in job_info.get(
+                                "output_artifacts", {}).items():
+                            if art["uri"] not in artifacts:
+                                artifacts[art["uri"]] = {
+                                    "type": "output",
+                                    "name": name,
+                                    "job_id": job_info["job_id"],
+                                    **art,
+                                }
+    return {
+        "jobs": list(jobs.values()),
+        "artifacts": list(artifacts.values()),
+    }
