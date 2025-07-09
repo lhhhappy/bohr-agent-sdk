@@ -102,8 +102,10 @@ class DispatcherExecutor(BaseExecutor):
                 self.python_packages.append(module.__file__)
             import_func_line = "from %s import %s\n" % (module_name, fn_name)
 
-        script += "import asyncio, jsonpickle\n\n"
+        script += "import asyncio, jsonpickle, os\n"
+        script += "from pathlib import Path\n\n"
         script += "if __name__ == \"__main__\":\n"
+        script += "    cwd = os.getcwd()\n"
         script += "    kwargs = jsonpickle.loads(r'''%s''')\n" % \
             jsonpickle.dumps(kwargs)
         script += "    try:\n"
@@ -113,10 +115,17 @@ class DispatcherExecutor(BaseExecutor):
             script += "        results = asyncio.run(%s(**kwargs))\n" % fn_name
         else:
             script += "        results = %s(**kwargs)\n" % fn_name
+            script += "        if isinstance(results, dict):\n"
+            script += "            for name in results:\n"
+            script += "                if isinstance(results[name], Path):\n"
+            script += "                    results[name] = "\
+                "results[name].absolute().relative_to(cwd)\n"
         script += "    except Exception as e:\n"
+        script += "        os.chdir(cwd)\n"
         script += "        with open('err', 'w') as f:\n"
         script += "            f.write(str(e))\n"
         script += "        raise e\n"
+        script += "    os.chdir(cwd)\n"
         script += "    with open('results.txt', 'w') as f:\n"
         script += "        f.write(jsonpickle.dumps(results))\n"
         with open("script.py", "w") as f:
