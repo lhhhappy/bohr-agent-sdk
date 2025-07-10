@@ -116,6 +116,7 @@ def search_error_in_memory_handler(toolset):
 def extract_job_info(events: List[Event]) -> dict:
     jobs = {}
     artifacts = {}
+    events.sort(key=lambda event: event.timestamp)
     for event in events:
         if event.content and event.content.parts:
             for part in event.content.parts:
@@ -135,39 +136,42 @@ def extract_job_info(events: List[Event]) -> dict:
                         }
                     job = jobs[resp.id]
                     job["timestamp"] = event.timestamp
-                    if "result" in resp.response and isinstance(
-                            resp.response["result"], types.CallToolResult):
-                        res = resp.response["result"]
+                    res = resp.response.get("result")
+                    if isinstance(res, dict) and "content" in res \
+                            and "isError" in res:
+                        res = types.CallToolResult(
+                            content=res["content"], isError=res["isError"])
+                    if isinstance(res, types.CallToolResult):
                         if res.isError:
                             err_msg = res.content[0].text
                             if err_msg.startswith("Error executing tool"):
                                 err_msg = err_msg[err_msg.find(":")+2:]
                             job["err_msg"] = err_msg
-                        else:
+                        elif hasattr(res.content[0], "text"):
                             result = jsonpickle.loads(res.content[0].text)
                             if "job_id" not in result:
                                 job["result"] = result
-                    if hasattr(res.content[0], "job_info"):
-                        job_info = res.content[0].job_info
-                        job.update(job_info)
-                        for name, art in job_info.get(
-                                "input_artifacts", {}).items():
-                            if art["uri"] not in artifacts:
-                                artifacts[art["uri"]] = {
-                                    "type": "input",
-                                    "name": name,
-                                    "job_id": job_info["job_id"],
-                                    **art,
-                                }
-                        for name, art in job_info.get(
-                                "output_artifacts", {}).items():
-                            if art["uri"] not in artifacts:
-                                artifacts[art["uri"]] = {
-                                    "type": "output",
-                                    "name": name,
-                                    "job_id": job_info["job_id"],
-                                    **art,
-                                }
+                        if hasattr(res.content[0], "job_info"):
+                            job_info = res.content[0].job_info
+                            job.update(job_info)
+                            for name, art in job_info.get(
+                                    "input_artifacts", {}).items():
+                                if art["uri"] not in artifacts:
+                                    artifacts[art["uri"]] = {
+                                        "type": "input",
+                                        "name": name,
+                                        "job_id": job_info["job_id"],
+                                        **art,
+                                    }
+                            for name, art in job_info.get(
+                                    "output_artifacts", {}).items():
+                                if art["uri"] not in artifacts:
+                                    artifacts[art["uri"]] = {
+                                        "type": "output",
+                                        "name": name,
+                                        "job_id": job_info["job_id"],
+                                        **art,
+                                    }
     return {
         "jobs": list(jobs.values()),
         "artifacts": list(artifacts.values()),
