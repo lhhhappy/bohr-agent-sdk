@@ -12,12 +12,15 @@ from dpdispatcher import Machine, Resources, Task, Submission
 
 from .base_executor import BaseExecutor
 from .... import __path__
+
 config = {
     "username": os.environ.get("BOHRIUM_USERNAME", ""),
     "password": os.environ.get("BOHRIUM_PASSWORD", ""),
     "project_id": os.environ.get("BOHRIUM_PROJECT_ID", ""),
     "access_key": os.environ.get("BOHRIUM_ACCESS_KEY", ""),
     "app_key": os.environ.get("BOHRIUM_APP_KEY", "agent"),
+    "bohrium_url": os.environ.get("BOHRIUM_BOHRIUM_URL",
+                                  "https://bohrium.dp.tech"),
 }
 logger = logging.getLogger(__name__)
 
@@ -26,17 +29,17 @@ def get_source_code(fn):
     source_lines, start_line = inspect.getsourcelines(fn)
     source_file = inspect.getsourcefile(fn)
     with open(source_file, "r", encoding="utf-8") as fd:
-        pre_lines = fd.readlines()[:start_line-1]
+        pre_lines = fd.readlines()[:start_line - 1]
     return "".join(pre_lines + source_lines) + "\n"
 
 
 class DispatcherExecutor(BaseExecutor):
     def __init__(
-        self,
-        machine=None,
-        resources=None,
-        python_packages=None,
-        python_executable="python3",
+            self,
+            machine=None,
+            resources=None,
+            python_packages=None,
+            python_executable="python3",
     ):
         """Use DPDispatcher to execute the tool
         Refer to https://docs.deepmodeling.com/projects/dpdispatcher.
@@ -107,7 +110,7 @@ class DispatcherExecutor(BaseExecutor):
         script += "if __name__ == \"__main__\":\n"
         script += "    cwd = os.getcwd()\n"
         script += "    kwargs = jsonpickle.loads(r'''%s''')\n" % \
-            jsonpickle.dumps(kwargs)
+                  jsonpickle.dumps(kwargs)
         script += "    try:\n"
         if import_func_line is not None:
             script += "        " + import_func_line
@@ -118,8 +121,8 @@ class DispatcherExecutor(BaseExecutor):
             script += "        if isinstance(results, dict):\n"
             script += "            for name in results:\n"
             script += "                if isinstance(results[name], Path):\n"
-            script += "                    results[name] = "\
-                "results[name].absolute().relative_to(cwd)\n"
+            script += "                    results[name] = " \
+                      "results[name].absolute().relative_to(cwd)\n"
         script += "    except Exception as e:\n"
         script += "        os.chdir(cwd)\n"
         script += "        with open('err', 'w') as f:\n"
@@ -173,8 +176,8 @@ class DispatcherExecutor(BaseExecutor):
             extra_info = {
                 "bohr_job_id": bohr_job_id,
                 "bohr_group_id": bohr_group_id,
-                "job_link": "https://bohrium.dp.tech/jobs/detail/%s" %
-                bohr_job_id,
+                "job_link": f"{config['bohrium_url']}/jobs/detail/%s" %
+                            bohr_job_id,
             }
             logger.info(extra_info)
             res["extra_info"] = extra_info
@@ -182,8 +185,8 @@ class DispatcherExecutor(BaseExecutor):
             bohr_job_id = submission.belonging_jobs[0].job_id
             extra_info = {
                 "bohr_job_id": bohr_job_id,
-                "job_link": "https://bohrium.dp.tech/jobs/detail/%s" %
-                bohr_job_id,
+                "job_link": f"{config['bohrium_url']}/jobs/detail/%s" %
+                            bohr_job_id,
             }
             logger.info(extra_info)
             res["extra_info"] = extra_info
