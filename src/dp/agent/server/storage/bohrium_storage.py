@@ -50,9 +50,9 @@ def login(username=None, phone=None, password=None, bohrium_url=None):
         password = config["password"]
     if bohrium_url is None:
         bohrium_url = config["bohrium_url"]
-    config["authorization"] = _login(
+    authorization = _login(
         bohrium_url + "/account/login", username, phone, password)
-    return config["authorization"]
+    return authorization
 
 
 def _login(login_url=None, username=None, phone=None, password=None):
@@ -256,6 +256,7 @@ class BohriumStorage(BaseStorage):
         return meta["entityTag"] if "entityTag" in meta else ""
 
     def get_http_url(self, key):
+        key = self.prefixing(key)
         url = self.tiefblue_url + "/api/setacl"
         headers = {
             "Content-type": "application/json",
