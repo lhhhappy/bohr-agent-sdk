@@ -227,7 +227,11 @@ class CalculationMCPServer:
                     exec_id = res["job_id"]
                     job_id = "%s/%s" % (trace_id, exec_id)
                     logger.info("Job submitted (ID: %s)" % job_id)
-                return convert_to_content({"job_id": job_id}, job_info={
+                result = {
+                    "job_id": job_id,
+                    "extra_info": res.get("extra_info"),
+                }
+                return convert_to_content(result, job_info={
                     "trace_id": trace_id,
                     "executor_type": executor_type,
                     "job_id": job_id,
