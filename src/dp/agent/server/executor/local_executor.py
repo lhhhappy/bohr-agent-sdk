@@ -1,19 +1,43 @@
 import asyncio
 import importlib
 import inspect
+import io
 import jsonpickle
 import os
 import psutil
+import re
 import sys
+import time
 import uuid
 from multiprocessing import Process
 from typing import Dict, Optional
 
 from .base_executor import BaseExecutor
+from ..utils import get_logger
+
+DFLOW_ID_PATTERN = r"Workflow has been submitted \(ID: ([^,]*), UID: ([^)]*)\)"
+DFLOW_LINK_PATTERN = r"Workflow link: (.*)"
+logger = get_logger(__name__)
 
 
-def wrapped_fn(fn, kwargs):
+class Tee(io.TextIOBase):
+    def __init__(self, file, stdout):
+        self.file = file
+        self.stdout = stdout
+
+    def write(self, text):
+        self.stdout.write(text)
+        self.file.write(text)
+        self.file.flush()
+        return len(text)
+
+
+def wrapped_fn(fn, kwargs, redirect_file=None):
     pid = os.getpid()
+    if redirect_file:
+        stdout = sys.stdout
+        flog = open(redirect_file, "w")
+        sys.stdout = Tee(flog, stdout)
     try:
         if inspect.iscoroutinefunction(fn):
             result = asyncio.run(fn(**kwargs))
@@ -23,6 +47,10 @@ def wrapped_fn(fn, kwargs):
         with open("err", "w") as f:
             f.write(str(e))
         raise e
+    finally:
+        if redirect_file:
+            sys.stdout = stdout
+            flog.close()
     with open("%s.txt" % pid, "w") as f:
         f.write(jsonpickle.dumps(result))
 
@@ -47,13 +75,16 @@ def reload_dflow_config():
 
 
 class LocalExecutor(BaseExecutor):
-    def __init__(self, env: Optional[Dict[str, str]] = None):
+    def __init__(self, env: Optional[Dict[str, str]] = None,
+                 dflow: bool = False):
         """
         Execute the tool locally
         Args:
             env: The environmental variables at run time
+            dflow: Wait until workflow submitted in submit method
         """
         self.env = env or {}
+        self.dflow = dflow
 
     def set_env(self):
         old_env = {}
@@ -73,10 +104,34 @@ class LocalExecutor(BaseExecutor):
     def submit(self, fn, kwargs):
         os.environ["DP_AGENT_RUNNING_MODE"] = "1"
         old_env = self.set_env()
-        p = Process(target=wrapped_fn, kwargs={"fn": fn, "kwargs": kwargs})
+        params = {"fn": fn, "kwargs": kwargs}
+        if self.dflow:
+            params["redirect_file"] = "log.txt"
+        p = Process(target=wrapped_fn, kwargs=params)
         p.start()
+        extra_info = {}
+        if self.dflow:
+            while True:
+                alive = p.is_alive()
+                if os.path.isfile("log.txt"):
+                    with open("log.txt", "r") as f:
+                        log = f.read()
+                    match_id = re.search(DFLOW_ID_PATTERN, log)
+                    match_link = re.search(DFLOW_LINK_PATTERN, log)
+                    if match_id and match_link:
+                        wf_id = match_id.group(1)
+                        wf_uid = match_id.group(2)
+                        wf_link = match_link.group(1)
+                        extra_info["workflow_id"] = wf_id
+                        extra_info["workflow_uid"] = wf_uid
+                        extra_info["workflow_link"] = wf_link
+                        break
+                if not alive:
+                    break
+                logger.info("Waiting workflow to be submitted")
+                time.sleep(1)
         self.recover_env(old_env)
-        return {"job_id": str(p.pid)}
+        return {"job_id": str(p.pid), "extra_info": extra_info}
 
     def query_status(self, job_id):
         try:
