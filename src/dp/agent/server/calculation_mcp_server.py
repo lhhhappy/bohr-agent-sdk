@@ -29,7 +29,7 @@ def parse_uri(uri):
 
 
 def init_storage(storage_config: Optional[dict] = None):
-    if storage_config is None:
+    if not storage_config:
         storage_config = {"type": "local"}
     storage_config = deepcopy(storage_config)
     storage_type = storage_config.pop("type")
@@ -38,7 +38,7 @@ def init_storage(storage_config: Optional[dict] = None):
 
 
 def init_executor(executor_config: Optional[dict] = None):
-    if executor_config is None:
+    if not executor_config:
         executor_config = {"type": "local"}
     executor_config = deepcopy(executor_config)
     executor_type = executor_config.pop("type")
