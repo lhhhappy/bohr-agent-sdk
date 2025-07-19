@@ -101,23 +101,23 @@ include-package-data = true
     "**/*.json",
     "**/*.txt"
 ]
-# 只包含构建后的静态文件，不包含源码
-"dp.agent.cli.templates.ui.frontend.ui-static" = [
-    "**/*.html",
-    "**/*.js",
-    "**/*.css",
-    "**/*.map",
-    "**/*.json",
-    "**/*.svg",
-    "**/*.ico",
-    "**/*.png",
-    "**/*.jpg",
-    "**/*.jpeg",
-    "**/*.gif",
-    "**/*.woff",
-    "**/*.woff2",
-    "**/*.ttf",
-    "**/*.eot"
+# 包含前端静态文件
+"dp.agent.cli.templates.ui.frontend" = [
+    "ui-static/**/*.html",
+    "ui-static/**/*.js",
+    "ui-static/**/*.css",
+    "ui-static/**/*.map",
+    "ui-static/**/*.json",
+    "ui-static/**/*.svg",
+    "ui-static/**/*.ico",
+    "ui-static/**/*.png",
+    "ui-static/**/*.jpg",
+    "ui-static/**/*.jpeg",
+    "ui-static/**/*.gif",
+    "ui-static/**/*.woff",
+    "ui-static/**/*.woff2",
+    "ui-static/**/*.ttf",
+    "ui-static/**/*.eot"
 ]
 
 [build-system]

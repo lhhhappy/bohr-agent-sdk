@@ -3,7 +3,8 @@
 
 # Frontend development
 src/dp/agent/cli/templates/ui/frontend/node_modules/
-# Note: dist/ is committed for pip git install support
+# Frontend build output (ui-static is committed for pip git install)
+src/dp/agent/cli/templates/ui/frontend/dist/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
