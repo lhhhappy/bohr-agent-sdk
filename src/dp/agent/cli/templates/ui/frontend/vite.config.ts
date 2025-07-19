@@ -38,7 +38,7 @@ export default defineConfig({
     },
   },
   build: {
-    outDir: 'ui-static',  // 改为不被 gitignore 的名称
+    outDir: 'ui-static',
   },
   server: {
     port: parseInt(process.env.FRONTEND_PORT || String(serverConfig.port)),

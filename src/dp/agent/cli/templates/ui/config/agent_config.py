@@ -102,8 +102,16 @@ class AgentConfig:
         
         server_config = self.config.get("server", {})
         
+        # 支持 "host" 字段（用户配置）和 "allowedHosts"（向后兼容）
+        user_hosts = server_config.get("host", server_config.get("allowedHosts", []))
+        
+        # 确保 user_hosts 是列表
+        if isinstance(user_hosts, str):
+            user_hosts = [user_hosts]
+        elif not isinstance(user_hosts, list):
+            user_hosts = []
+            
         # 合并默认主机和用户定义的额外主机
-        user_hosts = server_config.get("allowedHosts", [])
         all_hosts = list(set(default_hosts + user_hosts))  # 使用 set 去重
         
         return {
