@@ -34,9 +34,13 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 import uvicorn
+import logging
 
 from google.adk import Runner
 from google.adk.sessions import InMemorySessionService
+
+# 设置 uvicorn 的日志级别，过滤掉 Invalid HTTP request 警告
+logging.getLogger("uvicorn.error").setLevel(logging.ERROR)
 from google.genai import types
 
 # Import configuration
@@ -54,8 +58,31 @@ except Exception as e:
     raise
 
 # 配置日志
-logging.basicConfig(level=logging.INFO)
+# 检查是否已经有 handler，避免重复添加
 logger = logging.getLogger(__name__)
+if not logger.handlers:
+    # 创建文件 handler，使用追加模式
+    file_handler = logging.FileHandler('websocket.log', mode='a', encoding='utf-8')
+    file_handler.setLevel(logging.INFO)
+    
+    # 创建控制台 handler
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    
+    # 设置格式
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    file_handler.setFormatter(formatter)
+    console_handler.setFormatter(formatter)
+    
+    # 添加 handlers
+    logger.addHandler(file_handler)
+    logger.addHandler(console_handler)
+    logger.setLevel(logging.INFO)
+    
+    # 在日志文件中添加会话分隔符
+    logger.info("="*80)
+    logger.info(f"新的 WebSocket 服务器会话开始于 {datetime.now()}")
+    logger.info("="*80)
 
 @dataclass
 class Message:
@@ -119,14 +146,27 @@ app.add_middleware(
 # Host 验证中间件
 class HostValidationMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        host = request.headers.get("host", "").split(":")[0]
-        if host and host not in allowed_hosts:
-            return PlainTextResponse(
-                content=f"Host '{host}' is not allowed",
-                status_code=403
-            )
-        response = await call_next(request)
-        return response
+        # 检查是否是有效的 HTTP 请求
+        try:
+            # 获取请求方法和路径
+            method = request.method
+            path = request.url.path
+            
+            # 过滤掉空请求或无效请求
+            if not method or not path:
+                return PlainTextResponse(content="", status_code=400)
+                
+            host = request.headers.get("host", "").split(":")[0]
+            if host and host not in allowed_hosts:
+                return PlainTextResponse(
+                    content=f"Host '{host}' is not allowed",
+                    status_code=403
+                )
+            response = await call_next(request)
+            return response
+        except Exception:
+            # 捕获并静默处理无效请求
+            return PlainTextResponse(content="", status_code=400)
 
 app.add_middleware(HostValidationMiddleware)
 
@@ -895,4 +935,10 @@ if __name__ == "__main__":
     print(f"🔌 WebSocket 端点: ws://{display_host}:{port}/ws")
     
     # uvicorn 始终监听 0.0.0.0 以支持所有配置的主机
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    uvicorn.run(
+        app, 
+        host="0.0.0.0", 
+        port=port,
+        log_level="info",  # 使用 info 级别，过滤掉 warning
+        access_log=False   # 禁用访问日志，减少噪音
+    )

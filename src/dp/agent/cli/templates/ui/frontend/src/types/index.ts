@@ -57,10 +57,6 @@ export interface AgentConfig {
     outputDirectory: string
     watchDirectories: string[]
   }
-  websocket: {
-    host: string
-    port: number
-  }
   server: {
     port: number
     host: string[]

@@ -46,7 +46,6 @@ class ConfigService {
       agent: { ...defaults.agent, ...config.agent },
       ui: { ...defaults.ui, ...config.ui },
       files: { ...defaults.files, ...config.files },
-      websocket: { ...defaults.websocket, ...config.websocket },
       server: { ...defaults.server, ...config.server },
     }
   }
@@ -71,10 +70,6 @@ class ConfigService {
       files: {
         outputDirectory: './output',
         watchDirectories: ['./output'],
-      },
-      websocket: {
-        host: 'localhost',
-        port: 8000,
       },
       server: {
         port: 8000,
