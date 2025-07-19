@@ -33,6 +33,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.types import ASGIApp, Receive, Scope, Send
 import uvicorn
 import logging
 
@@ -149,10 +150,12 @@ app.add_middleware(
 # 请求日志中间件 - 用于调试
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        # 记录所有请求的详细信息
-        client_host = request.client.host if request.client else "unknown"
-        logger.info(f"收到请求: {request.method} {request.url.path} from {client_host}")
-        logger.info(f"Headers: {dict(request.headers)}")
+        try:
+            # 简单记录请求信息
+            logger.info(f"收到请求: {request.method} {request.url.path}")
+        except:
+            # 忽略任何日志错误
+            pass
         
         response = await call_next(request)
         return response
@@ -160,38 +163,21 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
 # Host 验证中间件
 class HostValidationMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        # 检查是否是有效的 HTTP 请求
-        try:
-            # 获取请求方法和路径
-            method = request.method
-            path = request.url.path
-            
-            # 过滤掉空请求或无效请求
-            if not method or not path:
-                logger.warning(f"收到无效请求: method={method}, path={path}")
-                return PlainTextResponse(content="", status_code=400)
-                
-            host_header = request.headers.get("host", "")
-            host = host_header.split(":")[0] if host_header else ""
-            
-            # 记录 Host 验证信息
-            logger.info(f"Host 验证: 请求 Host='{host}', 允许的 Hosts={allowed_hosts}")
-            
-            if host and host not in allowed_hosts:
-                logger.warning(f"拒绝访问: Host '{host}' 不在允许列表中")
-                return PlainTextResponse(
-                    content=f"Host '{host}' is not allowed",
-                    status_code=403
-                )
-            response = await call_next(request)
-            return response
-        except Exception as e:
-            # 记录异常详情
-            logger.error(f"处理请求时出错: {e}")
-            return PlainTextResponse(content="", status_code=400)
+        host = request.headers.get("host", "").split(":")[0]
+        if host and host not in allowed_hosts:
+            logger.warning(f"拒绝访问: Host '{host}' 不在允许列表中")
+            return PlainTextResponse(
+                content=f"Host '{host}' is not allowed",
+                status_code=403
+            )
+        response = await call_next(request)
+        return response
 
+# 注意：中间件按相反顺序执行，最后添加的最先执行
+# 所以先添加 HostValidation，再添加 RequestLogging
 app.add_middleware(HostValidationMiddleware)
 app.add_middleware(RequestLoggingMiddleware)
+
 
 class ConnectionContext:
     """每个WebSocket连接的独立上下文"""
