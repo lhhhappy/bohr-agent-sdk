@@ -37,6 +37,9 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  build: {
+    outDir: 'ui-static',  // 改为不被 gitignore 的名称
+  },
   server: {
     port: parseInt(process.env.FRONTEND_PORT || String(serverConfig.port)),
     allowedHosts: serverConfig.allowedHosts,

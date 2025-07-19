@@ -102,7 +102,7 @@ include-package-data = true
     "**/*.txt"
 ]
 # 只包含构建后的静态文件，不包含源码
-"dp.agent.cli.templates.ui.frontend.dist" = [
+"dp.agent.cli.templates.ui.frontend.ui-static" = [
     "**/*.html",
     "**/*.js",
     "**/*.css",

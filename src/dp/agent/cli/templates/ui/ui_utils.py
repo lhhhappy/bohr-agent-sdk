@@ -147,7 +147,7 @@ class UIProcessManager:
             raise FileNotFoundError(f"找不到 UI 目录: {ui_path}")
         
         # 检查是否有构建好的静态文件
-        dist_path = ui_path / "dist"
+        dist_path = ui_path / "ui-static"
         if dist_path.exists() and not dev_mode:
             # 使用 Python 内置的 HTTP 服务器提供静态文件
             click.echo("使用静态文件模式...")
@@ -165,28 +165,42 @@ class UIProcessManager:
         
         # 设置环境变量
         env = os.environ.copy()
-        env['VITE_PORT'] = str(frontend_port)
+        env['FRONTEND_PORT'] = str(frontend_port)
         env['VITE_WS_PORT'] = str(self.config['websocket']['port'])
         
         # 启动命令
-        cmd = ["npm", "run", "dev", "--", "--logLevel", "error"] if dev_mode else ["npm", "run", "build"]
+        if dev_mode:
+            # 开发模式：确保端口不冲突
+            cmd = ["npm", "run", "dev"]
+            click.echo(f"启动前端开发服务器 (端口: {frontend_port})...")
+        else:
+            cmd = ["npm", "run", "build"]
+            click.echo("构建前端生产版本...")
         
-        # 静默启动前端
-        log_file = open(Path.cwd() / "frontend.log", "a")
-        process = subprocess.Popen(
-            cmd,
-            cwd=str(ui_path),
-            env=env,
-            stdout=log_file,
-            stderr=subprocess.STDOUT
-        )
-        self.processes.append(process)
-        
-        # 等待服务器启动
-        time.sleep(3)
-        
-        if process.poll() is not None:
-            raise RuntimeError("前端服务器启动失败")
+        # 启动前端
+        log_file_path = Path.cwd() / "frontend.log"
+        with open(log_file_path, "a") as log_file:
+            process = subprocess.Popen(
+                cmd,
+                cwd=str(ui_path),
+                env=env,
+                stdout=log_file,
+                stderr=subprocess.STDOUT
+            )
+            self.processes.append(process)
+            
+            # 等待服务器启动
+            time.sleep(3)
+            
+            # 检查进程状态
+            if process.poll() is not None:
+                # 读取错误日志
+                with open(log_file_path, "r") as f:
+                    error_log = f.read()
+                    if "EADDRINUSE" in error_log:
+                        raise RuntimeError(f"端口 {frontend_port} 已被占用，请使用 --port 参数指定其他端口")
+                    else:
+                        raise RuntimeError(f"前端服务器启动失败，请查看 frontend.log 了解详情")
         
         click.echo(f"\n✨ Agent UI 已启动: http://localhost:{frontend_port}\n")
         return process

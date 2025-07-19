@@ -37,7 +37,7 @@ def build_frontend():
         return False
     
     # 检查构建输出
-    dist_dir = frontend_dir / "dist"
+    dist_dir = frontend_dir / "ui-static"
     if not dist_dir.exists():
         print("错误: 构建输出目录不存在")
         return False

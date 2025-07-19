@@ -1,9 +1,9 @@
 *~
 *.bk*
 
-# Frontend build output
-src/dp/agent/cli/templates/ui/frontend/dist/
+# Frontend development
 src/dp/agent/cli/templates/ui/frontend/node_modules/
+# Note: dist/ is committed for pip git install support
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
