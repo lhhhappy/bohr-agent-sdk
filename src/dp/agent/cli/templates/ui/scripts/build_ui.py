@@ -9,9 +9,10 @@ from pathlib import Path
 
 def build_frontend():
     """构建前端静态文件"""
-    # 获取项目根目录
-    root_dir = Path(__file__).parent
-    frontend_dir = root_dir / "src" / "dp" / "agent" / "cli" / "templates" / "ui" / "frontend"
+    # 获取脚本所在目录
+    script_dir = Path(__file__).parent
+    # frontend 在上一级目录
+    frontend_dir = script_dir.parent / "frontend"
     
     if not frontend_dir.exists():
         print(f"错误: 找不到前端目录 {frontend_dir}")
