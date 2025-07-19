@@ -44,7 +44,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             </div>
             <div>
               <h1 className="text-lg font-semibold text-apple-gray-900">Agent</h1>
-              <p className="text-xs text-apple-gray-500">Symbolic Regression</p>
             </div>
           </div>
 

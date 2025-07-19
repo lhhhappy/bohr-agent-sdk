@@ -9,6 +9,7 @@ import uuid
 import requests
 
 from ..server.storage import storage_dict
+from .templates.ui.ui_utils import UIConfigManager, UIProcessManager
 
 @click.group()
 def cli():
@@ -36,30 +37,30 @@ def scaffolding(type):
     current_dir = Path.cwd()
     
     
-    # 创建必要的目录结构
+    # Create necessary directory structure
     if type == 'device':
-        project_dirs = project_dirs = ['cloud', 'device']
+        project_dirs = ['cloud', 'device']
     elif type == 'calculation':
-        project_dirs = project_dirs = ['calculation']
+        project_dirs = ['calculation']
         
     for dir_name in project_dirs:
         dst_dir = current_dir / dir_name
         
         if dst_dir.exists():
-            click.echo(f"Warning: {dir_name} already exists，skipping...")
-            click.echo(f"If you want to create a new scaffold, please delete the existing project folder first.")
+            click.echo(f"Warning: {dir_name} already exists, skipping...")
+            click.echo(f"To create a new scaffold, please delete the existing folder first.")
             continue
             
-        # 只创建目录，不复制SDK文件
+        # Create directory only
         dst_dir.mkdir(parents=True, exist_ok=True)
     
-    # 创建__init__.py文件以使目录成为Python包
+    # Create __init__.py files to make directories Python packages
     for dir_name in project_dirs:
         init_file = current_dir / dir_name / '__init__.py'
         if not init_file.exists():
             init_file.write_text('')
     
-    # 从模板创建main.py文件
+    # Create main.py from template
     main_template = templates_dir / 'main.py.template'
     main_file = current_dir / 'main.py'
     if not main_file.exists():
@@ -78,11 +79,11 @@ def scaffolding(type):
         calculation_file = current_dir / 'calculation' / 'simple.py'
         if not calculation_file.exists():
             shutil.copy2(calculation_template, calculation_file)
-            click.echo("\nCreated calculation example implementation in calculation/calculation.py")
-            click.echo("Please modify this file according to your actual calculation control requirements.")
+            click.echo("\nCreated calculation example implementation in calculation/simple.py")
+            click.echo("Please modify this file according to your actual calculation requirements.")
     
-    click.echo("\nSucceed for fetching scaffold!")
-    click.echo("Now you can use dp-agent run-cloud or dp-agent run-device to run this project!")
+    click.echo("\nSuccessfully created scaffold!")
+    click.echo("Now you can use dp-agent run tool cloud/device/calculation to run this project!")
 
 @fetch.command()
 def config():
@@ -104,7 +105,6 @@ def config():
         response = requests.get(remote_env_url)
         with open(env_file, 'w') as f:
             f.write(response.text)
-        #shutil.copy2(env_template, env_file)
         click.echo("Configuration file .env has been created.")
         click.echo("\nIMPORTANT: Please update the following configurations in your .env file:")
         click.echo("1. MQTT_INSTANCE_ID - Your Aliyun MQTT instance ID")
@@ -172,16 +172,95 @@ def calculation():
         sys.exit(1)
 
 @run.command()
-def agent():
-    """Run the science agent."""
-    click.echo("Starting agent...")
-    click.echo("Agent started.")
+@click.option('--ui/--no-ui', default=True, help='Enable/disable Web UI interface')
+@click.option('--config', help='Configuration file path (default: agent-config.json)')
+@click.option('--port', type=int, help='Frontend port (default: 50002)')
+@click.option('--ws-port', type=int, help='WebSocket port (default: 8000)')
+@click.option('--module', help='Agent module path (default: agent)')
+@click.option('--agent-name', help='Agent variable name (default: root_agent)')
+def agent(ui, config, port, ws_port, module, agent_name):
+    """Run the science agent with optional UI interface."""
+    if not ui:
+        # 无 UI 模式 - 简单运行
+        click.echo("Starting agent in console mode...")
+        # TODO: 实现控制台模式
+        click.echo("Console mode not yet implemented.")
+        return
+    
+    # UI 模式 - 简化输出
+    
+    # 查找项目根目录的 agent
+    current_dir = Path.cwd()
+    
+    # 加载配置以获取模块路径
+    config_path = Path(config) if config else current_dir / "agent-config.json"
+    config_manager = UIConfigManager(config_path if config_path.exists() else None)
+    
+    # 如果提供了 module 参数，使用它；否则使用配置中的 module
+    if module:
+        config_manager.config['agent']['module'] = module
+    
+    agent_module = config_manager.config['agent']['module']
+    
+    # 将模块路径转换为文件路径来检查
+    module_parts = agent_module.split('.')
+    module_dir = current_dir / Path(*module_parts[:-1])
+    module_file = current_dir / Path(*module_parts[:-1]) / f"{module_parts[-1]}.py"
+    module_init = module_dir / "__init__.py"
+    
+    # 检查模块是否存在
+    if not (module_dir.exists() or module_file.exists()):
+        click.echo(f"错误: 找不到 {agent_module} 模块。")
+        click.echo(f"尝试查找: {module_dir} 或 {module_file}")
+        click.echo("\n请确保:")
+        click.echo("1. 您已经创建了 agent 模块")
+        click.echo("2. 在 config.json 中正确配置了 'agent.module' 路径")
+        click.echo("3. 或使用 --module 参数指定正确的模块路径")
+        sys.exit(1)
+    
+    # 使用内置的 UI 模板
+    ui_dir = Path(__file__).parent / "templates" / "ui"
+    if not ui_dir.exists():
+        click.echo("错误: 找不到内置 UI 模板。")
+        sys.exit(1)
+    
+    # 更新其他配置参数
+    if agent_name:
+        config_manager.config['agent']['rootAgent'] = agent_name
+    if port:
+        config_manager.config['server']['port'] = port
+    if ws_port:
+        config_manager.config['websocket']['port'] = ws_port
+    
+    # 创建临时配置文件
+    temp_config = ui_dir / "config" / "agent-config.temp.json"
+    config_manager.save_config(temp_config)
+    
+    # 设置环境变量
+    os.environ['AGENT_CONFIG_PATH'] = str(temp_config)
+    os.environ['PYTHONPATH'] = f"{current_dir}:{os.environ.get('PYTHONPATH', '')}"
+    
+    try:
+        # 创建进程管理器
+        process_manager = UIProcessManager(ui_dir, config_manager.config)
+        
+        # 启动服务
+        process_manager.start_websocket_server()
+        process_manager.start_frontend_server(dev_mode=True)
+        
+        # 等待进程
+        process_manager.wait_for_processes()
+        
+    except Exception as e:
+        click.echo(f"错误: {e}")
+        if 'process_manager' in locals():
+            process_manager.cleanup()
+        sys.exit(1)
+    finally:
+        # 清理临时配置文件
+        if temp_config.exists():
+            temp_config.unlink()
 
-@run.command()
-def debug():
-    """Debug the science agent in cloud environment."""
-    click.echo("Starting cloud environment in debug mode...")
-    click.echo("Cloud environment debug mode started.")
 
 @cli.group()
 def artifact():
@@ -228,6 +307,7 @@ def download(**kwargs):
     storage = storage_dict[scheme]()
     path = storage.download(key, path)
     click.echo("%s has been downloaded to %s" % (uri, path))
+
 
 def main():
     cli()

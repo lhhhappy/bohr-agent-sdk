@@ -1,6 +1,5 @@
 import os
 import json
-import shutil
 import subprocess
 import signal
 import sys
@@ -15,7 +14,7 @@ class UIConfigManager:
     
     DEFAULT_CONFIG = {
         "agent": {
-            "module": "agent.agent",
+            "module": "agent",  # 用户必须提供具体的模块路径
             "rootAgent": "root_agent",
             "name": "DP Agent Assistant",
             "description": "AI Assistant powered by DP Agent SDK",
@@ -201,109 +200,3 @@ class UIProcessManager:
         self.processes.clear()
 
 
-def init_ui_project(project_name: str = "my-agent"):
-    """初始化 UI 项目"""
-    templates_dir = Path(__file__).parent
-    current_dir = Path.cwd()
-    
-    # 创建项目目录
-    project_dir = current_dir / project_name
-    if project_dir.exists():
-        click.echo(f"错误: 目录 {project_name} 已存在")
-        return False
-    
-    project_dir.mkdir(parents=True)
-    
-    # 复制必要的文件
-    essential_files = [
-        "websocket-server.py",
-        "agent_config.py",
-        "requirements.txt"
-    ]
-    
-    essential_dirs = [
-        "frontend",
-        "config",
-        "agent"
-    ]
-    
-    # 复制文件
-    for file_name in essential_files:
-        src = templates_dir / file_name
-        dst = project_dir / file_name
-        if src.exists():
-            shutil.copy2(src, dst)
-    
-    # 复制目录
-    for dir_name in essential_dirs:
-        src = templates_dir / dir_name
-        dst = project_dir / dir_name
-        if src.exists():
-            if dir_name == "agent":
-                # 对于 agent 目录，只复制必要文件并使用模板
-                dst.mkdir(exist_ok=True)
-                # 复制 __init__.py
-                init_src = src / "__init__.py"
-                if init_src.exists():
-                    shutil.copy2(init_src, dst / "__init__.py")
-                # 使用 agent 模板
-                template_src = templates_dir / "agent" / "agent_template.py"
-                if template_src.exists():
-                    shutil.copy2(template_src, dst / "agent.py")
-            else:
-                shutil.copytree(src, dst)
-    
-    # 创建输出目录
-    (project_dir / "output").mkdir(exist_ok=True)
-    
-    # 创建自定义配置文件
-    config_manager = UIConfigManager()
-    config_manager.config['agent']['name'] = project_name
-    config_manager.config['ui']['title'] = project_name
-    config_manager.save_config(project_dir / "agent-config.json")
-    
-    # 创建 README
-    readme_content = f"""# {project_name}
-
-基于 DP Agent SDK 的 UI Agent 项目
-
-## 快速开始
-
-1. 安装 Python 依赖:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-2. 安装前端依赖:
-   ```bash
-   cd frontend && npm install && cd ..
-   ```
-
-3. 修改 `agent/agent.py` 实现您的 Agent 逻辑
-
-4. 运行项目:
-   ```bash
-   dp-agent ui run
-   ```
-
-## 配置
-
-编辑 `agent-config.json` 自定义配置
-
-## 目录结构
-
-- `agent/` - Agent 实现代码
-- `frontend/` - 前端界面
-- `config/` - 配置文件
-- `output/` - 输出文件目录
-"""
-    
-    (project_dir / "README.md").write_text(readme_content)
-    
-    click.echo(f"\n✨ 成功创建 UI 项目: {project_name}")
-    click.echo(f"\n下一步:")
-    click.echo(f"1. cd {project_name}")
-    click.echo(f"2. 编辑 agent/agent.py 实现您的 Agent")
-    click.echo(f"3. 运行: dp-agent ui run")
-    
-    return True
