@@ -130,7 +130,12 @@ class LocalExecutor(BaseExecutor):
                         extra_info["workflow_link"] = wf_link
                         break
                 if not alive:
-                    break
+                    if os.path.isfile("err"):
+                        with open("err", "r") as f:
+                            err_msg = f.read()
+                    else:
+                        err_msg = "No workflow submitted"
+                    raise RuntimeError(err_msg)
                 logger.info("Waiting workflow to be submitted")
                 time.sleep(1)
         self.recover_env(old_env)
