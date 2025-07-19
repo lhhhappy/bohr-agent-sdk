@@ -1,5 +1,9 @@
 *~
 *.bk*
+
+# Frontend build output
+src/dp/agent/cli/templates/ui/frontend/dist/
+src/dp/agent/cli/templates/ui/frontend/node_modules/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

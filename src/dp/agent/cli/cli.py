@@ -178,7 +178,8 @@ def calculation():
 @click.option('--ws-port', type=int, help='WebSocket port (default: 8000)')
 @click.option('--module', help='Agent module path (default: agent)')
 @click.option('--agent-name', help='Agent variable name (default: root_agent)')
-def agent(ui, config, port, ws_port, module, agent_name):
+@click.option('--dev/--prod', default=False, help='Development mode (default: production)')
+def agent(ui, config, port, ws_port, module, agent_name, dev):
     """Run the science agent with optional UI interface."""
     if not ui:
         # 无 UI 模式 - 简单运行
@@ -246,7 +247,7 @@ def agent(ui, config, port, ws_port, module, agent_name):
         
         # 启动服务
         process_manager.start_websocket_server()
-        process_manager.start_frontend_server(dev_mode=True)
+        process_manager.start_frontend_server(dev_mode=dev)
         
         # 等待进程
         process_manager.wait_for_processes()

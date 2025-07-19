@@ -146,6 +146,17 @@ class UIProcessManager:
         if not ui_path.exists():
             raise FileNotFoundError(f"找不到 UI 目录: {ui_path}")
         
+        # 检查是否有构建好的静态文件
+        dist_path = ui_path / "dist"
+        if dist_path.exists() and not dev_mode:
+            # 使用 Python 内置的 HTTP 服务器提供静态文件
+            click.echo("使用静态文件模式...")
+            return self._start_static_server(dist_path, frontend_port)
+        
+        if not dev_mode and not dist_path.exists():
+            click.echo("警告: 未找到构建的静态文件，将使用开发模式")
+            dev_mode = True
+        
         # 检查是否已安装依赖
         node_modules = ui_path / "node_modules"
         if not node_modules.exists():
@@ -178,6 +189,52 @@ class UIProcessManager:
             raise RuntimeError("前端服务器启动失败")
         
         click.echo(f"\n✨ Agent UI 已启动: http://localhost:{frontend_port}\n")
+        return process
+    
+    def _start_static_server(self, static_dir: Path, port: int):
+        """启动静态文件服务器"""
+        # 创建一个简单的 Python HTTP 服务器脚本
+        server_script = f"""
+import http.server
+import socketserver
+import os
+from pathlib import Path
+
+os.chdir('{static_dir}')
+
+class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
+    def end_headers(self):
+        # 添加 CORS 头
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+        super().end_headers()
+    
+    def do_GET(self):
+        # 对于 SPA 路由，总是返回 index.html
+        if not Path(self.translate_path(self.path)).exists() and not self.path.startswith('/api'):
+            self.path = '/index.html'
+        return super().do_GET()
+
+with socketserver.TCPServer(("", {port}), MyHTTPRequestHandler) as httpd:
+    print(f"静态文件服务器运行在 http://localhost:{port}")
+    httpd.serve_forever()
+"""
+        
+        # 运行静态服务器
+        process = subprocess.Popen(
+            [sys.executable, "-c", server_script],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
+        self.processes.append(process)
+        
+        # 等待服务器启动
+        time.sleep(1)
+        
+        if process.poll() is not None:
+            raise RuntimeError("静态文件服务器启动失败")
+        
         return process
     
     def wait_for_processes(self):

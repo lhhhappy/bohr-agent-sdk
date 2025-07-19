@@ -86,6 +86,39 @@ where = ["src"]
 
 [tool.setuptools]
 package-dir = {"" = "src"}
+include-package-data = true
+
+[tool.setuptools.package-data]
+"dp.agent.cli.templates" = [
+    "**/*.template",
+    "**/*.json",
+    "**/*.md",
+    "**/*.txt",
+    "**/*.py"
+]
+"dp.agent.cli.templates.ui" = [
+    "**/*.py",
+    "**/*.json",
+    "**/*.txt"
+]
+# 只包含构建后的静态文件，不包含源码
+"dp.agent.cli.templates.ui.frontend.dist" = [
+    "**/*.html",
+    "**/*.js",
+    "**/*.css",
+    "**/*.map",
+    "**/*.json",
+    "**/*.svg",
+    "**/*.ico",
+    "**/*.png",
+    "**/*.jpg",
+    "**/*.jpeg",
+    "**/*.gif",
+    "**/*.woff",
+    "**/*.woff2",
+    "**/*.ttf",
+    "**/*.eot"
+]
 
 [build-system]
 requires = [
