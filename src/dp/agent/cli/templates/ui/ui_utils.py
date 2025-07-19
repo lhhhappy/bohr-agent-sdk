@@ -1,0 +1,309 @@
+import os
+import json
+import shutil
+import subprocess
+import signal
+import sys
+import time
+from pathlib import Path
+from typing import Dict, Any, Optional, List
+import click
+
+
+class UIConfigManager:
+    """管理 UI 配置的工具类"""
+    
+    DEFAULT_CONFIG = {
+        "agent": {
+            "module": "agent.agent",
+            "rootAgent": "root_agent",
+            "name": "DP Agent Assistant",
+            "description": "AI Assistant powered by DP Agent SDK",
+            "welcomeMessage": "欢迎使用 DP Agent Assistant！我可以帮助您进行科学计算、数据分析等任务。",
+        },
+        "ui": {
+            "title": "DP Agent Assistant",
+            "theme": "light"
+        },
+        "files": {
+            "output_directory": "./output",
+            "watch_directories": ["./output"]
+        },
+        "websocket": {
+            "port": 8000,
+            "host": "localhost"
+        },
+        "server": {
+            "port": 50002,
+            "host": ["localhost", "127.0.0.1"]
+        }
+    }
+    
+    def __init__(self, config_path: Optional[str] = None):
+        self.config_path = Path(config_path) if config_path else Path.cwd() / "agent-config.json"
+        self.config = self._load_config()
+    
+    def _load_config(self) -> Dict[str, Any]:
+        """加载配置文件，如果不存在则使用默认配置"""
+        if self.config_path.exists():
+            with open(self.config_path, 'r') as f:
+                user_config = json.load(f)
+                # 深度合并用户配置和默认配置
+                return self._deep_merge(self.DEFAULT_CONFIG.copy(), user_config)
+        return self.DEFAULT_CONFIG.copy()
+    
+    def _deep_merge(self, base: Dict, update: Dict) -> Dict:
+        """深度合并两个字典"""
+        for key, value in update.items():
+            if key in base and isinstance(base[key], dict) and isinstance(value, dict):
+                base[key] = self._deep_merge(base[key], value)
+            else:
+                base[key] = value
+        return base
+    
+    def save_config(self, config_path: Optional[Path] = None):
+        """保存配置到文件"""
+        save_path = config_path or self.config_path
+        with open(save_path, 'w') as f:
+            json.dump(self.config, f, indent=2)
+    
+    def update_from_cli(self, **kwargs):
+        """从命令行参数更新配置"""
+        if kwargs.get('agent'):
+            module, _, variable = kwargs['agent'].partition(':')
+            self.config['agent']['module'] = module
+            if variable:
+                self.config['agent']['rootAgent'] = variable
+        
+        if kwargs.get('port'):
+            self.config['server']['port'] = kwargs['port']
+        
+        if kwargs.get('ws_port'):
+            self.config['websocket']['port'] = kwargs['ws_port']
+        
+        if kwargs.get('host'):
+            self.config['server']['host'] = [kwargs['host']]
+            self.config['websocket']['host'] = kwargs['host']
+
+
+class UIProcessManager:
+    """管理 UI 相关进程的工具类"""
+    
+    def __init__(self, ui_dir: Path, config: Dict[str, Any]):
+        self.ui_dir = ui_dir
+        self.config = config
+        self.processes: List[subprocess.Popen] = []
+        self._setup_signal_handlers()
+    
+    def _setup_signal_handlers(self):
+        """设置信号处理器以优雅关闭进程"""
+        signal.signal(signal.SIGINT, self._signal_handler)
+        signal.signal(signal.SIGTERM, self._signal_handler)
+    
+    def _signal_handler(self, signum, frame):
+        """处理终止信号"""
+        click.echo("\n正在关闭服务...")
+        self.cleanup()
+        sys.exit(0)
+    
+    def start_websocket_server(self):
+        """启动 WebSocket 服务器"""
+        ws_port = self.config['websocket']['port']
+        
+        websocket_script = self.ui_dir / "websocket-server.py"
+        if not websocket_script.exists():
+            raise FileNotFoundError(f"找不到 websocket-server.py: {websocket_script}")
+        
+        # 设置环境变量
+        env = os.environ.copy()
+        env['AGENT_CONFIG_PATH'] = str(self.ui_dir / "config" / "agent-config.temp.json")
+        env['USER_WORKING_DIR'] = str(Path.cwd())  # 传递用户工作目录
+        env['UI_TEMPLATE_DIR'] = str(self.ui_dir)  # 传递UI模板目录
+        
+        # 静默启动，将输出重定向到日志文件
+        log_file = open(Path.cwd() / "websocket.log", "a")
+        process = subprocess.Popen(
+            [sys.executable, str(websocket_script)],
+            cwd=str(Path.cwd()),  # 在用户工作目录运行
+            env=env,
+            stdout=log_file,
+            stderr=subprocess.STDOUT
+        )
+        self.processes.append(process)
+        
+        # 等待服务器启动
+        time.sleep(2)
+        
+        if process.poll() is not None:
+            raise RuntimeError("WebSocket 服务器启动失败")
+        
+        return process
+    
+    def start_frontend_server(self, dev_mode: bool = True):
+        """启动前端服务器"""
+        frontend_port = self.config['server']['port']
+        
+        ui_path = self.ui_dir / "frontend"
+        if not ui_path.exists():
+            raise FileNotFoundError(f"找不到 UI 目录: {ui_path}")
+        
+        # 检查是否已安装依赖
+        node_modules = ui_path / "node_modules"
+        if not node_modules.exists():
+            click.echo("检测到未安装前端依赖，正在安装...")
+            subprocess.run(["npm", "install"], cwd=str(ui_path), check=True)
+        
+        # 设置环境变量
+        env = os.environ.copy()
+        env['VITE_PORT'] = str(frontend_port)
+        env['VITE_WS_PORT'] = str(self.config['websocket']['port'])
+        
+        # 启动命令
+        cmd = ["npm", "run", "dev", "--", "--logLevel", "error"] if dev_mode else ["npm", "run", "build"]
+        
+        # 静默启动前端
+        log_file = open(Path.cwd() / "frontend.log", "a")
+        process = subprocess.Popen(
+            cmd,
+            cwd=str(ui_path),
+            env=env,
+            stdout=log_file,
+            stderr=subprocess.STDOUT
+        )
+        self.processes.append(process)
+        
+        # 等待服务器启动
+        time.sleep(3)
+        
+        if process.poll() is not None:
+            raise RuntimeError("前端服务器启动失败")
+        
+        click.echo(f"\n✨ Agent UI 已启动: http://localhost:{frontend_port}\n")
+        return process
+    
+    def wait_for_processes(self):
+        """等待所有进程结束"""
+        try:
+            for process in self.processes:
+                process.wait()
+        except KeyboardInterrupt:
+            self.cleanup()
+    
+    def cleanup(self):
+        """清理所有进程"""
+        for process in self.processes:
+            if process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+        self.processes.clear()
+
+
+def init_ui_project(project_name: str = "my-agent"):
+    """初始化 UI 项目"""
+    templates_dir = Path(__file__).parent
+    current_dir = Path.cwd()
+    
+    # 创建项目目录
+    project_dir = current_dir / project_name
+    if project_dir.exists():
+        click.echo(f"错误: 目录 {project_name} 已存在")
+        return False
+    
+    project_dir.mkdir(parents=True)
+    
+    # 复制必要的文件
+    essential_files = [
+        "websocket-server.py",
+        "agent_config.py",
+        "requirements.txt"
+    ]
+    
+    essential_dirs = [
+        "frontend",
+        "config",
+        "agent"
+    ]
+    
+    # 复制文件
+    for file_name in essential_files:
+        src = templates_dir / file_name
+        dst = project_dir / file_name
+        if src.exists():
+            shutil.copy2(src, dst)
+    
+    # 复制目录
+    for dir_name in essential_dirs:
+        src = templates_dir / dir_name
+        dst = project_dir / dir_name
+        if src.exists():
+            if dir_name == "agent":
+                # 对于 agent 目录，只复制必要文件并使用模板
+                dst.mkdir(exist_ok=True)
+                # 复制 __init__.py
+                init_src = src / "__init__.py"
+                if init_src.exists():
+                    shutil.copy2(init_src, dst / "__init__.py")
+                # 使用 agent 模板
+                template_src = templates_dir / "agent" / "agent_template.py"
+                if template_src.exists():
+                    shutil.copy2(template_src, dst / "agent.py")
+            else:
+                shutil.copytree(src, dst)
+    
+    # 创建输出目录
+    (project_dir / "output").mkdir(exist_ok=True)
+    
+    # 创建自定义配置文件
+    config_manager = UIConfigManager()
+    config_manager.config['agent']['name'] = project_name
+    config_manager.config['ui']['title'] = project_name
+    config_manager.save_config(project_dir / "agent-config.json")
+    
+    # 创建 README
+    readme_content = f"""# {project_name}
+
+基于 DP Agent SDK 的 UI Agent 项目
+
+## 快速开始
+
+1. 安装 Python 依赖:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+2. 安装前端依赖:
+   ```bash
+   cd frontend && npm install && cd ..
+   ```
+
+3. 修改 `agent/agent.py` 实现您的 Agent 逻辑
+
+4. 运行项目:
+   ```bash
+   dp-agent ui run
+   ```
+
+## 配置
+
+编辑 `agent-config.json` 自定义配置
+
+## 目录结构
+
+- `agent/` - Agent 实现代码
+- `frontend/` - 前端界面
+- `config/` - 配置文件
+- `output/` - 输出文件目录
+"""
+    
+    (project_dir / "README.md").write_text(readme_content)
+    
+    click.echo(f"\n✨ 成功创建 UI 项目: {project_name}")
+    click.echo(f"\n下一步:")
+    click.echo(f"1. cd {project_name}")
+    click.echo(f"2. 编辑 agent/agent.py 实现您的 Agent")
+    click.echo(f"3. 运行: dp-agent ui run")
+    
+    return True
