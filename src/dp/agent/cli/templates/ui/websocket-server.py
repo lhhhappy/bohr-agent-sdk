@@ -883,10 +883,16 @@ else:
 
 if __name__ == "__main__":
     print("🚀 启动 Agent WebSocket 服务器...")
-    # 从配置获取端口
-    ws_port = agentconfig.config.get('websocket', {}).get('port', 8000)
-    ws_host = agentconfig.config.get('websocket', {}).get('host', 'localhost')
+    # 统一使用 server 配置
+    server_config = agentconfig.config.get('server', {})
+    port = server_config.get('port', 8000)
+    # host 数组中的第一个作为显示用
+    hosts = server_config.get('host', ['localhost'])
+    display_host = hosts[0] if isinstance(hosts, list) else hosts
     
     print("📡 使用 Session 模式运行 rootagent")
-    print(f"🌐 WebSocket 端点: ws://{ws_host}:{ws_port}/ws")
-    uvicorn.run(app, host="0.0.0.0", port=ws_port)
+    print(f"🌐 服务器地址: http://{display_host}:{port}")
+    print(f"🔌 WebSocket 端点: ws://{display_host}:{port}/ws")
+    
+    # uvicorn 始终监听 0.0.0.0 以支持所有配置的主机
+    uvicorn.run(app, host="0.0.0.0", port=port)

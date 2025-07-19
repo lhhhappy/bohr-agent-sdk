@@ -174,12 +174,11 @@ def calculation():
 @run.command()
 @click.option('--ui/--no-ui', default=True, help='Enable/disable Web UI interface')
 @click.option('--config', help='Configuration file path (default: agent-config.json)')
-@click.option('--port', type=int, help='Frontend port (default: 50002)')
-@click.option('--ws-port', type=int, help='WebSocket port (default: 8000)')
+@click.option('--port', type=int, help='Server port (default from config)')
 @click.option('--module', help='Agent module path (default: agent)')
 @click.option('--agent-name', help='Agent variable name (default: root_agent)')
 @click.option('--dev/--prod', default=False, help='Development mode (default: production)')
-def agent(ui, config, port, ws_port, module, agent_name, dev):
+def agent(ui, config, port, module, agent_name, dev):
     """Run the science agent with optional UI interface."""
     if not ui:
         # 无 UI 模式 - 简单运行
@@ -230,8 +229,6 @@ def agent(ui, config, port, ws_port, module, agent_name, dev):
         config_manager.config['agent']['rootAgent'] = agent_name
     if port:
         config_manager.config['server']['port'] = port
-    if ws_port:
-        config_manager.config['websocket']['port'] = ws_port
     
     # 创建临时配置文件
     temp_config = ui_dir / "config" / "agent-config.temp.json"

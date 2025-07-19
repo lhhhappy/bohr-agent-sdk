@@ -109,7 +109,8 @@ class UIProcessManager:
     
     def start_websocket_server(self):
         """启动 WebSocket 服务器"""
-        ws_port = self.config['websocket']['port']
+        # 统一使用 server.port
+        ws_port = self.config.get('server', {}).get('port', 8000)
         
         websocket_script = self.ui_dir / "websocket-server.py"
         if not websocket_script.exists():
@@ -150,8 +151,8 @@ class UIProcessManager:
     
     def start_frontend_server(self, dev_mode: bool = True):
         """启动前端服务器"""
-        # 在统一服务架构下，前端访问 WebSocket 服务器端口
-        ws_port = self.config['websocket']['port']
+        # 在统一服务架构下，前端访问服务器端口
+        server_port = self.config.get('server', {}).get('port', 8000)
         
         ui_path = self.ui_dir / "frontend"
         if not ui_path.exists():
@@ -161,7 +162,7 @@ class UIProcessManager:
         dist_path = ui_path / "ui-static"
         if dist_path.exists() and not dev_mode:
             # 静态文件由 WebSocket 服务器提供，这里只需要提示
-            click.echo(f"✨ Agent UI 已启动: http://localhost:{ws_port}")
+            click.echo(f"✨ Agent UI 已启动: http://localhost:{server_port}")
             click.echo("📁 使用静态文件模式")
             return  # 不需要启动额外的进程，也不添加到进程列表
         
@@ -177,16 +178,17 @@ class UIProcessManager:
         
         # 设置环境变量
         env = os.environ.copy()
-        # 开发模式下使用不同的端口，避免冲突
-        frontend_port = self.config['server']['port']
-        env['FRONTEND_PORT'] = str(frontend_port)
-        env['VITE_WS_PORT'] = str(ws_port)
+        # 开发模式下，前端开发服务器使用不同的端口
+        frontend_dev_port = self.config.get('frontend', {}).get('devPort', 3000)
+        env['FRONTEND_PORT'] = str(frontend_dev_port)
+        # 告诉前端 WebSocket 在哪个端口
+        env['VITE_WS_PORT'] = str(server_port)
         
         # 启动命令
         if dev_mode:
             # 开发模式：确保端口不冲突
             cmd = ["npm", "run", "dev"]
-            click.echo(f"启动前端开发服务器 (端口: {frontend_port})...")
+            click.echo(f"启动前端开发服务器 (端口: {frontend_dev_port})...")
         else:
             cmd = ["npm", "run", "build"]
             click.echo("构建前端生产版本...")
@@ -212,11 +214,11 @@ class UIProcessManager:
                 with open(log_file_path, "r") as f:
                     error_log = f.read()
                     if "EADDRINUSE" in error_log:
-                        raise RuntimeError(f"端口 {frontend_port} 已被占用，请使用 --port 参数指定其他端口")
+                        raise RuntimeError(f"端口 {frontend_dev_port} 已被占用")
                     else:
                         raise RuntimeError(f"前端服务器启动失败，请查看 frontend.log 了解详情")
         
-        click.echo(f"\n✨ Agent UI 已启动: http://localhost:{frontend_port}\n")
+        click.echo(f"\n✨ Agent UI 已启动: http://localhost:{frontend_dev_port}\n")
         return process
     
     
