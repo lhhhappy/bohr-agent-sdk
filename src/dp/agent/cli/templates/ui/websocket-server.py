@@ -124,6 +124,9 @@ app = FastAPI(title="Agent WebSocket Server")
 server_config = agentconfig.get_server_config()
 allowed_hosts = server_config.get("allowedHosts", ["localhost", "127.0.0.1", "0.0.0.0"])
 
+# 记录允许的主机列表
+logger.info(f"允许的主机列表: {allowed_hosts}")
+
 # 构建允许的 CORS origins
 allowed_origins = []
 for host in allowed_hosts:
@@ -168,8 +171,14 @@ class HostValidationMiddleware(BaseHTTPMiddleware):
                 logger.warning(f"收到无效请求: method={method}, path={path}")
                 return PlainTextResponse(content="", status_code=400)
                 
-            host = request.headers.get("host", "").split(":")[0]
+            host_header = request.headers.get("host", "")
+            host = host_header.split(":")[0] if host_header else ""
+            
+            # 记录 Host 验证信息
+            logger.info(f"Host 验证: 请求 Host='{host}', 允许的 Hosts={allowed_hosts}")
+            
             if host and host not in allowed_hosts:
+                logger.warning(f"拒绝访问: Host '{host}' 不在允许列表中")
                 return PlainTextResponse(
                     content=f"Host '{host}' is not allowed",
                     status_code=403
@@ -954,5 +963,36 @@ if __name__ == "__main__":
         host="0.0.0.0", 
         port=port,
         log_level="info",  # 使用 info 级别，过滤掉 warning
-        access_log=False   # 禁用访问日志，减少噪音
+        access_log=False,  # 禁用访问日志，减少噪音
+        # 添加自定义的日志配置
+        log_config={
+            "version": 1,
+            "disable_existing_loggers": False,
+            "formatters": {
+                "default": {
+                    "fmt": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+                    "datefmt": "%Y-%m-%d %H:%M:%S"
+                }
+            },
+            "handlers": {
+                "default": {
+                    "formatter": "default",
+                    "class": "logging.StreamHandler",
+                    "stream": "ext://sys.stdout"
+                }
+            },
+            "root": {
+                "level": "INFO",
+                "handlers": ["default"]
+            },
+            "loggers": {
+                "uvicorn.error": {
+                    "level": "ERROR"
+                },
+                "uvicorn.access": {
+                    "handlers": [],
+                    "propagate": False
+                }
+            }
+        }
     )
