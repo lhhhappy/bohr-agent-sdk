@@ -1,7 +1,7 @@
 {
-  "name": "-ui",
+  "name": "bohr-agent-ui",
   "version": "1.0.0",
-  "description": "Beautiful Apple-style UI for Agent-",
+  "description": "Beautiful UI for Bohr Agent SDK",
   "private": true,
   "dependencies": {
     "react": "^18.2.0",
