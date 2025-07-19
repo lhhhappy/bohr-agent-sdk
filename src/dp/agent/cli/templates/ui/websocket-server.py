@@ -39,8 +39,8 @@ import logging
 from google.adk import Runner
 from google.adk.sessions import InMemorySessionService
 
-# 设置 uvicorn 的日志级别，过滤掉 Invalid HTTP request 警告
-logging.getLogger("uvicorn.error").setLevel(logging.ERROR)
+# 暂时保留原始日志级别以便调试
+# logging.getLogger("uvicorn.error").setLevel(logging.ERROR)
 from google.genai import types
 
 # Import configuration
@@ -61,8 +61,8 @@ except Exception as e:
 # 检查是否已经有 handler，避免重复添加
 logger = logging.getLogger(__name__)
 if not logger.handlers:
-    # 创建文件 handler，使用追加模式
-    file_handler = logging.FileHandler('websocket.log', mode='a', encoding='utf-8')
+    # 创建文件 handler，使用覆盖模式
+    file_handler = logging.FileHandler('websocket.log', mode='w', encoding='utf-8')
     file_handler.setLevel(logging.INFO)
     
     # 创建控制台 handler
@@ -143,6 +143,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# 请求日志中间件 - 用于调试
+class RequestLoggingMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        # 记录所有请求的详细信息
+        client_host = request.client.host if request.client else "unknown"
+        logger.info(f"收到请求: {request.method} {request.url.path} from {client_host}")
+        logger.info(f"Headers: {dict(request.headers)}")
+        
+        response = await call_next(request)
+        return response
+
 # Host 验证中间件
 class HostValidationMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
@@ -154,6 +165,7 @@ class HostValidationMiddleware(BaseHTTPMiddleware):
             
             # 过滤掉空请求或无效请求
             if not method or not path:
+                logger.warning(f"收到无效请求: method={method}, path={path}")
                 return PlainTextResponse(content="", status_code=400)
                 
             host = request.headers.get("host", "").split(":")[0]
@@ -164,11 +176,13 @@ class HostValidationMiddleware(BaseHTTPMiddleware):
                 )
             response = await call_next(request)
             return response
-        except Exception:
-            # 捕获并静默处理无效请求
+        except Exception as e:
+            # 记录异常详情
+            logger.error(f"处理请求时出错: {e}")
             return PlainTextResponse(content="", status_code=400)
 
 app.add_middleware(HostValidationMiddleware)
+app.add_middleware(RequestLoggingMiddleware)
 
 class ConnectionContext:
     """每个WebSocket连接的独立上下文"""
