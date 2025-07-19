@@ -163,8 +163,7 @@ class UIProcessManager:
         if dist_path.exists() and not dev_mode:
             # 静态文件由 WebSocket 服务器提供，这里只需要提示
             click.echo(f"✨ Agent UI 已启动: http://localhost:{server_port}")
-            click.echo("📁 使用静态文件模式")
-            return  # 不需要启动额外的进程，也不添加到进程列表
+            return 
         
         if not dev_mode and not dist_path.exists():
             click.echo("警告: 未找到构建的静态文件，将使用开发模式")
