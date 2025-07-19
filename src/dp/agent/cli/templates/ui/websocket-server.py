@@ -7,6 +7,11 @@ Agent WebSocket 服务器
 import os
 import sys
 
+# Add user working directory to Python path first
+user_working_dir = os.environ.get('USER_WORKING_DIR')
+if user_working_dir and user_working_dir not in sys.path:
+    sys.path.insert(0, user_working_dir)
+
 # Add UI template directory to Python path for config imports
 ui_template_dir = os.environ.get('UI_TEMPLATE_DIR')
 if ui_template_dir and ui_template_dir not in sys.path:
@@ -37,7 +42,15 @@ from google.genai import types
 from config.agent_config import agentconfig
 
 # Get agent from configuration
-rootagent = agentconfig.get_agent()
+try:
+    rootagent = agentconfig.get_agent()
+    print(f"✅ 成功加载 agent: {agentconfig.config['agent']['module']}")
+except Exception as e:
+    print(f"❌ 加载 agent 失败: {e}")
+    print(f"📂 当前工作目录: {os.getcwd()}")
+    print(f"🐍 Python 路径: {sys.path}")
+    print(f"📋 配置内容: {agentconfig.config}")
+    raise
 
 # 配置日志
 logging.basicConfig(level=logging.INFO)
@@ -855,6 +868,10 @@ async def execute_shell_command(command: str, context: ConnectionContext):
 
 if __name__ == "__main__":
     print("🚀 启动 Agent WebSocket 服务器...")
+    # 从配置获取端口
+    ws_port = agentconfig.config.get('websocket', {}).get('port', 8000)
+    ws_host = agentconfig.config.get('websocket', {}).get('host', 'localhost')
+    
     print("📡 使用 Session 模式运行 rootagent")
-    print("🌐 WebSocket 端点: ws://localhost:8000/ws")
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    print(f"🌐 WebSocket 端点: ws://{ws_host}:{ws_port}/ws")
+    uvicorn.run(app, host="0.0.0.0", port=ws_port)

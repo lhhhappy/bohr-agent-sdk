@@ -252,6 +252,11 @@ def agent(ui, config, port, ws_port, module, agent_name, dev):
         # 等待进程
         process_manager.wait_for_processes()
         
+    except KeyboardInterrupt:
+        click.echo("\n正在关闭服务...")
+        if 'process_manager' in locals():
+            process_manager.cleanup()
+        sys.exit(0)  # Exit immediately after cleanup
     except Exception as e:
         click.echo(f"错误: {e}")
         if 'process_manager' in locals():
@@ -259,7 +264,7 @@ def agent(ui, config, port, ws_port, module, agent_name, dev):
         sys.exit(1)
     finally:
         # 清理临时配置文件
-        if temp_config.exists():
+        if 'temp_config' in locals() and temp_config.exists():
             temp_config.unlink()
 
 

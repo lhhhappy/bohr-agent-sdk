@@ -7,6 +7,7 @@ To switch between different agents, modify the agent-config.json file.
 
 import json
 import os
+import sys
 from pathlib import Path
 from typing import Dict, Any
 import importlib
@@ -19,6 +20,7 @@ class AgentConfig:
             self.config_path = Path(env_path)
         else:
             self.config_path = Path(config_path)
+        
         self.config = self._load_config()
         
     def _load_config(self) -> Dict[str, Any]:
