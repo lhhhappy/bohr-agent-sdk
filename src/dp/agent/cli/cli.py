@@ -250,6 +250,7 @@ def agent(ui, config, port, ws_port, module, agent_name, dev):
         process_manager.start_frontend_server(dev_mode=dev)
         
         # 等待进程
+        click.echo("\n按 Ctrl+C 停止服务...")
         process_manager.wait_for_processes()
         
     except KeyboardInterrupt:

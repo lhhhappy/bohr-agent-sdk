@@ -143,11 +143,15 @@ class UIProcessManager:
         if process.poll() is not None:
             raise RuntimeError("WebSocket 服务器启动失败")
         
+        click.echo(f"🚀 WebSocket 服务器已启动（端口 {ws_port}）")
+        click.echo("📝 查看日志: websocket.log")
+        
         return process
     
     def start_frontend_server(self, dev_mode: bool = True):
         """启动前端服务器"""
-        frontend_port = self.config['server']['port']
+        # 在统一服务架构下，前端访问 WebSocket 服务器端口
+        ws_port = self.config['websocket']['port']
         
         ui_path = self.ui_dir / "frontend"
         if not ui_path.exists():
@@ -156,9 +160,10 @@ class UIProcessManager:
         # 检查是否有构建好的静态文件
         dist_path = ui_path / "ui-static"
         if dist_path.exists() and not dev_mode:
-            # 使用 Python 内置的 HTTP 服务器提供静态文件
-            click.echo("使用静态文件模式...")
-            return self._start_static_server(dist_path, frontend_port)
+            # 静态文件由 WebSocket 服务器提供，这里只需要提示
+            click.echo(f"✨ Agent UI 已启动: http://localhost:{ws_port}")
+            click.echo("📁 使用静态文件模式")
+            return  # 不需要启动额外的进程，也不添加到进程列表
         
         if not dev_mode and not dist_path.exists():
             click.echo("警告: 未找到构建的静态文件，将使用开发模式")
@@ -172,8 +177,10 @@ class UIProcessManager:
         
         # 设置环境变量
         env = os.environ.copy()
+        # 开发模式下使用不同的端口，避免冲突
+        frontend_port = self.config['server']['port']
         env['FRONTEND_PORT'] = str(frontend_port)
-        env['VITE_WS_PORT'] = str(self.config['websocket']['port'])
+        env['VITE_WS_PORT'] = str(ws_port)
         
         # 启动命令
         if dev_mode:
@@ -212,148 +219,13 @@ class UIProcessManager:
         click.echo(f"\n✨ Agent UI 已启动: http://localhost:{frontend_port}\n")
         return process
     
-    def _start_static_server(self, static_dir: Path, port: int):
-        """启动静态文件服务器"""
-        # 检查静态目录是否存在
-        if not static_dir.exists():
-            raise FileNotFoundError(f"静态文件目录不存在: {static_dir}")
-        
-        # 检查是否有 index.html
-        index_file = static_dir / "index.html"
-        if not index_file.exists():
-            raise FileNotFoundError(f"找不到 index.html 文件: {index_file}")
-        
-        # 从配置获取 WebSocket 服务器端口
-        ws_port = self.config.get('websocket', {}).get('port', 8000)
-        click.echo(f"静态服务器将代理请求到 WebSocket 端口: {ws_port}")
-        
-        # 创建一个带代理功能的 HTTP 服务器脚本
-        server_script = f"""
-import http.server
-import socketserver
-import os
-import sys
-import urllib.request
-import urllib.error
-from pathlib import Path
-from urllib.parse import urlparse, parse_qs
-
-# 切换到静态文件目录
-os.chdir(r'{static_dir}')
-print(f"Serving files from: {{os.getcwd()}}", file=sys.stderr)
-print(f"Proxying /api and /ws to localhost:{ws_port}", file=sys.stderr)
-
-class ProxyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
-    def log_message(self, format, *args):
-        # 将日志输出到 stderr
-        sys.stderr.write("%s - - [%s] %s\\n" %
-                         (self.address_string(),
-                          self.log_date_time_string(),
-                          format%args))
-    
-    def end_headers(self):
-        # 添加 CORS 头
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
-        super().end_headers()
-    
-    def do_GET(self):
-        # 处理 API 和 WebSocket 代理
-        if self.path.startswith('/api') or self.path.startswith('/ws'):
-            self.proxy_request()
-        else:
-            # 对于 SPA 路由，检查文件是否存在
-            if not Path(self.translate_path(self.path)).exists():
-                self.path = '/index.html'
-            return super().do_GET()
-    
-    def do_POST(self):
-        if self.path.startswith('/api'):
-            self.proxy_request()
-        else:
-            self.send_error(404)
-    
-    def do_OPTIONS(self):
-        self.send_response(200)
-        self.end_headers()
-    
-    def proxy_request(self):
-        # 代理到 WebSocket 服务器
-        target_url = f"http://localhost:{ws_port}{{self.path}}"
-        
-        try:
-            # 复制请求头
-            headers = {{}}
-            for header in self.headers:
-                if header.lower() not in ['host', 'connection']:
-                    headers[header] = self.headers[header]
-            
-            # 读取请求体（如果有）
-            content_length = int(self.headers.get('Content-Length', 0))
-            body = self.rfile.read(content_length) if content_length > 0 else None
-            
-            # 创建请求
-            req = urllib.request.Request(target_url, data=body, headers=headers)
-            req.get_method = lambda: self.command
-            
-            # 发送请求
-            with urllib.request.urlopen(req) as response:
-                # 返回响应
-                self.send_response(response.getcode())
-                for header, value in response.headers.items():
-                    if header.lower() not in ['connection', 'transfer-encoding']:
-                        self.send_header(header, value)
-                self.end_headers()
-                self.wfile.write(response.read())
-                
-        except urllib.error.HTTPError as e:
-            self.send_error(e.code, e.reason)
-        except Exception as e:
-            print(f"Proxy error: {{e}}", file=sys.stderr)
-            self.send_error(502, "Bad Gateway")
-
-try:
-    # 允许端口重用
-    socketserver.TCPServer.allow_reuse_address = True
-    with socketserver.TCPServer(("", {port}), ProxyHTTPRequestHandler) as httpd:
-        print(f"静态文件服务器运行在 http://localhost:{port}", file=sys.stderr)
-        httpd.serve_forever()
-except KeyboardInterrupt:
-    print("\\n服务器被用户中断", file=sys.stderr)
-    sys.exit(0)
-except Exception as e:
-    print(f"服务器启动失败: {{e}}", file=sys.stderr)
-    sys.exit(1)
-"""
-        
-        # 运行静态服务器
-        log_file_path = Path.cwd() / "static_server.log"
-        with open(log_file_path, "w") as log_file:
-            process = subprocess.Popen(
-                [sys.executable, "-c", server_script],
-                stdout=log_file,
-                stderr=subprocess.STDOUT
-            )
-            self.processes.append(process)
-        
-        # 等待服务器启动
-        time.sleep(2)
-        
-        # 检查进程状态
-        if process.poll() is not None:
-            # 读取错误日志
-            with open(log_file_path, "r") as f:
-                error_log = f.read()
-            raise RuntimeError(f"静态文件服务器启动失败:\n{error_log}")
-        
-        return process
     
     def wait_for_processes(self):
         """等待所有进程结束"""
         try:
             for process in self.processes:
-                process.wait()
+                if process:  # 处理可能的 None
+                    process.wait()
         except KeyboardInterrupt:
             # Don't handle here, let it bubble up to main
             raise
@@ -365,7 +237,7 @@ except Exception as e:
             
         # First attempt to terminate all processes
         for process in self.processes:
-            if process.poll() is None:
+            if process and process.poll() is None:
                 try:
                     process.terminate()
                 except:
@@ -376,7 +248,7 @@ except Exception as e:
         
         # Force kill any remaining processes
         for process in self.processes:
-            if process.poll() is None:
+            if process and process.poll() is None:
                 try:
                     process.kill()
                     process.wait(timeout=0.5)

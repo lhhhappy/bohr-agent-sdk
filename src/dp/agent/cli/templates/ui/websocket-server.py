@@ -31,6 +31,7 @@ import shlex
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
+from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 import uvicorn
 
@@ -691,9 +692,9 @@ async def get_file_content(file_path: str):
             status_code=500
         )
 
-@app.get("/")
-async def root():
-    """根路径"""
+@app.get("/api/status")
+async def status():
+    """API 状态"""
     return {
         "message": f"{agentconfig.config.get('agent', {}).get('name', 'Agent')} WebSocket 服务器正在运行",
         "mode": "session",
@@ -865,6 +866,20 @@ async def execute_shell_command(command: str, context: ConnectionContext):
             "type": "shell_error",
             "error": f"执行命令失败: {str(e)}"
         })
+
+# 挂载静态文件服务
+# 获取 UI 静态文件目录
+ui_template_dir = Path(os.environ.get('UI_TEMPLATE_DIR', Path(__file__).parent))
+static_dir = ui_template_dir / "frontend" / "ui-static"
+
+# 检查静态文件目录是否存在
+if static_dir.exists():
+    # 先定义其他所有路由，最后挂载静态文件
+    # 这样可以确保 API 和 WebSocket 路由优先匹配
+    app.mount("/", StaticFiles(directory=str(static_dir), html=True), name="static")
+    print(f"📁 静态文件目录: {static_dir}")
+else:
+    print(f"⚠️  静态文件目录不存在: {static_dir}")
 
 if __name__ == "__main__":
     print("🚀 启动 Agent WebSocket 服务器...")
