@@ -52,7 +52,7 @@ const Settings: React.FC = () => {
     model: {
       provider: 'openai',
       modelName: 'gpt-4o-mini',
-      apiKey: '••••••••••••••••',
+      apiKey: '',
       temperature: 0.7,
       maxTokens: 4096,
     },

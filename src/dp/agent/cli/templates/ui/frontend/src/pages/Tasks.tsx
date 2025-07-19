@@ -37,32 +37,7 @@ interface NewTaskModal {
 }
 
 const Tasks: React.FC = () => {
-  const [tasks, setTasks] = useState<Task[]>([
-    {
-      id: '1',
-      name: 'Deep Research Analysis',
-      status: 'completed',
-      type: 'research',
-      progress: 100,
-      startTime: new Date('2024-01-15T10:00:00'),
-      endTime: new Date('2024-01-15T10:05:00'),
-    },
-    {
-      id: '2',
-      name: 'Symbolic Regression - Iteration 1',
-      status: 'running',
-      type: 'py',
-      progress: 65,
-      startTime: new Date('2024-01-15T10:10:00'),
-    },
-    {
-      id: '3',
-      name: 'Generate Summary Report',
-      status: 'pending',
-      type: 'summarize',
-      progress: 0,
-    },
-  ])
+  const [tasks, setTasks] = useState<Task[]>([])
 
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
   const [newTaskModal, setNewTaskModal] = useState<NewTaskModal>({

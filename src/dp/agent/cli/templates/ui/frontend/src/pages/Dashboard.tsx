@@ -28,13 +28,7 @@ const Dashboard: React.FC = () => {
     totalIterations: 0,
   })
 
-  const [recentFiles, setRecentFiles] = useState<string[]>([
-    'deepresearch_report.md',
-    'iteration_history.json',
-    'summarize_report.md',
-    'results.json',
-    'best.txt',
-  ])
+  const [recentFiles, setRecentFiles] = useState<string[]>([])
 
   const statCards = [
     {
@@ -176,14 +170,14 @@ const Dashboard: React.FC = () => {
             </Link>
             
             <Link
-              to="/files/output/deepresearch_report.md"
+              to="/files"
               className="flex items-center justify-between p-4 rounded-lg bg-gradient-to-r from-apple-green/10 to-apple-blue/10 hover:from-apple-green/20 hover:to-apple-blue/20 transition-all"
             >
               <div className="flex items-center gap-3">
                 <FileText className="w-5 h-5 text-apple-green" />
                 <div>
-                  <p className="font-medium text-apple-gray-900">查看报告</p>
-                  <p className="text-sm text-apple-gray-600">最新的研究分析报告</p>
+                  <p className="font-medium text-apple-gray-900">查看文件</p>
+                  <p className="text-sm text-apple-gray-600">浏览所有输出文件</p>
                 </div>
               </div>
               <ArrowRight className="w-5 h-5 text-apple-gray-400" />

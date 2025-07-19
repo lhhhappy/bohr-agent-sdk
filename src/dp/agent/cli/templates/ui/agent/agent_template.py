@@ -9,7 +9,7 @@ from google_adk import Agent, Session, Tool, ToolResult
 
 
 # 定义一个简单的工具
-hellom_tool = Tool(
+hello_tool = Tool(
     name="hello",
     description="向用户打招呼",
     parameters={
