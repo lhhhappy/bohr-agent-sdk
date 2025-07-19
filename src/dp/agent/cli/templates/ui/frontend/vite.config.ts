@@ -1,34 +1,6 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
-import fs from 'fs'
-
-// Default hosts are always allowed
-const defaultHosts = ['localhost', '127.0.0.1', '0.0.0.0']
-
-// Read agent-config.json configuration
-let serverConfig = {
-  port: 50002,
-  allowedHosts: defaultHosts
-}
-
-try {
-  const configPath = path.resolve(__dirname, '../config/agent-config.json')
-  const configData = fs.readFileSync(configPath, 'utf-8')
-  const config = JSON.parse(configData)
-  if (config.server) {
-    // 合并默认主机和用户定义的额外主机
-    const userHosts = config.server.allowedHosts || []
-    const allHosts = [...new Set([...defaultHosts, ...userHosts])]
-    
-    serverConfig = {
-      port: config.server.port || 50002,
-      allowedHosts: allHosts
-    }
-  }
-} catch (error) {
-  console.warn('Failed to load agent-config.json, using defaults:', error)
-}
 
 export default defineConfig({
   plugins: [react()],
@@ -41,19 +13,20 @@ export default defineConfig({
     outDir: 'ui-static',
   },
   server: {
-    port: parseInt(process.env.FRONTEND_PORT || String(serverConfig.port)),
-    allowedHosts: serverConfig.allowedHosts,
+    // Use environment variable or default to 3000 for dev server
+    port: parseInt(process.env.FRONTEND_PORT || '3000'),
     host: '0.0.0.0',
     proxy: {
+      // Proxy API and WebSocket requests to the backend server
       '/api': {
-        target: 'http://localhost:8000',
+        target: `http://localhost:${process.env.VITE_WS_PORT || '8000'}`,
         changeOrigin: true,
       },
       '/ws': {
-        target: 'ws://localhost:8000',
+        target: `ws://localhost:${process.env.VITE_WS_PORT || '8000'}`,
         ws: true,
         changeOrigin: true,
       }
     }
   }
-}) // 添加缺失的闭合括号
+})

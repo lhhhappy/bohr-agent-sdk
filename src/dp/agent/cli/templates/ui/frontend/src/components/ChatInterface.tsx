@@ -510,7 +510,7 @@ const ChatInterface: React.FC = () => {
                     欢迎使用 {config.agent?.name || 'Agent'}
                   </h3>
                   <p className="text-sm text-gray-500 dark:text-gray-500">
-                    {config.agent?.welcomeMessage || '输入您的数据文件路径，开始符号回归分析'}
+                    {config.agent?.welcomeMessage || 'welcome to chat with me'}
                   </p>
                 </div>
               </div>

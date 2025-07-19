@@ -110,7 +110,7 @@ class UIProcessManager:
     def start_websocket_server(self):
         """启动 WebSocket 服务器"""
         # 统一使用 server.port
-        ws_port = self.config.get('server', {}).get('port', 8000)
+        server_port = self.config.get('server', {}).get('port', 8000)
         
         websocket_script = self.ui_dir / "websocket-server.py"
         if not websocket_script.exists():
@@ -144,14 +144,13 @@ class UIProcessManager:
         if process.poll() is not None:
             raise RuntimeError("WebSocket 服务器启动失败")
         
-        click.echo(f"🚀 WebSocket 服务器已启动（端口 {ws_port}）")
+        click.echo(f"🚀 WebSocket 服务器已启动（端口 {server_port}）")
         click.echo("📝 查看日志: websocket.log")
         
         return process
     
     def start_frontend_server(self, dev_mode: bool = True):
         """启动前端服务器"""
-        # 在统一服务架构下，前端访问服务器端口
         server_port = self.config.get('server', {}).get('port', 8000)
         
         ui_path = self.ui_dir / "frontend"
@@ -161,9 +160,9 @@ class UIProcessManager:
         # 检查是否有构建好的静态文件
         dist_path = ui_path / "ui-static"
         if dist_path.exists() and not dev_mode:
-            # 静态文件由 WebSocket 服务器提供，这里只需要提示
+            # 生产模式：静态文件由 WebSocket 服务器提供
             click.echo(f"✨ Agent UI 已启动: http://localhost:{server_port}")
-            return 
+            return None
         
         if not dev_mode and not dist_path.exists():
             click.echo("警告: 未找到构建的静态文件，将使用开发模式")
@@ -177,17 +176,16 @@ class UIProcessManager:
         
         # 设置环境变量
         env = os.environ.copy()
-        # 开发模式下，前端开发服务器使用不同的端口
-        frontend_dev_port = self.config.get('frontend', {}).get('devPort', 3000)
+        # 开发模式下，前端开发服务器使用固定端口3000
+        frontend_dev_port = 3000
         env['FRONTEND_PORT'] = str(frontend_dev_port)
-        # 告诉前端 WebSocket 在哪个端口
+        # 告诉前端后端服务器在哪个端口
         env['VITE_WS_PORT'] = str(server_port)
         
         # 启动命令
         if dev_mode:
-            # 开发模式：确保端口不冲突
             cmd = ["npm", "run", "dev"]
-            click.echo(f"启动前端开发服务器 (端口: {frontend_dev_port})...")
+            click.echo(f"启动前端开发服务器...")
         else:
             cmd = ["npm", "run", "build"]
             click.echo("构建前端生产版本...")
@@ -217,7 +215,10 @@ class UIProcessManager:
                     else:
                         raise RuntimeError(f"前端服务器启动失败，请查看 frontend.log 了解详情")
         
-        click.echo(f"\n✨ Agent UI 已启动: http://localhost:{frontend_dev_port}\n")
+        if dev_mode:
+            click.echo(f"\n✨ 前端开发服务器: http://localhost:{frontend_dev_port}")
+            click.echo(f"📡 后端服务器: http://localhost:{server_port}\n")
+        
         return process
     
     

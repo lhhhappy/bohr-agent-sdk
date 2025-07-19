@@ -1,9 +1,8 @@
 import axios from 'axios'
-
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+import { API_CONFIG, WS_CONFIG } from '../constants/config'
 
 const apiClient = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: API_CONFIG.BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -12,11 +11,6 @@ const apiClient = axios.create({
 // Request interceptor
 apiClient.interceptors.request.use(
   (config) => {
-    // Add auth token if available
-    const token = localStorage.getItem('token')
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`
-    }
     return config
   },
   (error) => {
@@ -28,93 +22,31 @@ apiClient.interceptors.request.use(
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
-      // Handle unauthorized
-      localStorage.removeItem('token')
-      window.location.href = '/login'
-    }
+    console.error('API Error:', error)
     return Promise.reject(error)
   }
 )
 
-export interface Task {
-  id: string
-  name: string
-  status: 'pending' | 'running' | 'completed' | 'failed' | 'paused'
-  type: 'research' | 'py' | 'summarize' | 'iteration'
-  progress: number
-  startTime?: string
-  endTime?: string
-  result?: any
-  error?: string
-}
-
-export interface CreateTaskRequest {
-  name: string
-  type: string
-  dataPath: string
-}
-
-export interface Stats {
-  totalTasks: number
-  completedTasks: number
-  runningTasks: number
-  totalIterations: number
-}
-
-export interface RecentFile {
-  name: string
-  path: string
-  size: number
-  modified: string
-}
-
-// API methods
+// API methods (only keeping the ones actually used)
 export const api = {
   // Files
   async getFile(path: string): Promise<string> {
-    const response = await apiClient.get(`/api/files/${path}`, {
+    const response = await apiClient.get(`${API_CONFIG.API_ENDPOINTS.FILES}/${path}`, {
       responseType: 'text',
     })
     return response.data
   },
 
-  async getRecentFiles(): Promise<RecentFile[]> {
-    const response = await apiClient.get('/api/recent-files')
+  async getFileTree(path?: string): Promise<any> {
+    const url = path 
+      ? `${API_CONFIG.API_ENDPOINTS.FILE_TREE}?path=${path}`
+      : API_CONFIG.API_ENDPOINTS.FILE_TREE
+    const response = await apiClient.get(url)
     return response.data
   },
 
-  // Tasks
-  async getTasks(): Promise<Task[]> {
-    const response = await apiClient.get('/api/tasks')
-    return response.data
-  },
-
-  async getTask(id: string): Promise<Task> {
-    const response = await apiClient.get(`/api/tasks/${id}`)
-    return response.data
-  },
-
-  async createTask(data: CreateTaskRequest): Promise<Task> {
-    const response = await apiClient.post('/api/tasks', data)
-    return response.data
-  },
-
-  async startTask(id: string): Promise<void> {
-    await apiClient.put(`/api/tasks/${id}/start`)
-  },
-
-  async pauseTask(id: string): Promise<void> {
-    await apiClient.put(`/api/tasks/${id}/pause`)
-  },
-
-  async deleteTask(id: string): Promise<void> {
-    await apiClient.delete(`/api/tasks/${id}`)
-  },
-
-  // Stats
-  async getStats(): Promise<Stats> {
-    const response = await apiClient.get('/api/stats')
+  async getConfig(): Promise<any> {
+    const response = await apiClient.get(API_CONFIG.API_ENDPOINTS.CONFIG)
     return response.data
   },
 }
@@ -126,7 +58,16 @@ export class WSClient {
   private listeners: Map<string, Set<Function>> = new Map()
 
   connect() {
-    const wsUrl = API_BASE_URL.replace('http', 'ws') + '/ws'
+    // Dynamic WebSocket URL based on current location
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const host = window.location.hostname
+    const port = window.location.port
+    
+    let wsUrl = `${protocol}//${host}`
+    if (port) {
+      wsUrl += `:${port}`
+    }
+    wsUrl += API_CONFIG.WS_ENDPOINT
     
     this.ws = new WebSocket(wsUrl)
 
@@ -164,7 +105,7 @@ export class WSClient {
     this.reconnectTimeout = setTimeout(() => {
       console.log('Attempting to reconnect WebSocket...')
       this.connect()
-    }, 5000)
+    }, WS_CONFIG.RECONNECT_DELAY)
   }
 
   disconnect() {
@@ -174,6 +115,14 @@ export class WSClient {
     if (this.ws) {
       this.ws.close()
       this.ws = null
+    }
+  }
+
+  send(data: any) {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify(data))
+    } else {
+      console.warn('WebSocket is not connected')
     }
   }
 

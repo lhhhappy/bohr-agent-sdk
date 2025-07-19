@@ -1,83 +1,41 @@
 import { useState, useEffect } from 'react'
-import axios from 'axios'
-
-interface AgentConfig {
-  agent: {
-    name: string
-    description: string
-    welcomeMessage: string
-  }
-  ui: {
-    title: string
-    theme?: {
-      primaryColor: string
-      secondaryColor: string
-    }
-    features: {
-      showFileExplorer: boolean
-      showSessionList: boolean
-      enableFileUpload?: boolean
-    }
-  }
-  files: {
-    outputDirectory: string
-    watchDirectories: string[]
-  }
-  websocket: {
-    host: string
-    port: number
-    reconnectInterval?: number
-  }
-}
-
-const defaultConfig: AgentConfig = {
-  agent: {
-    name: 'Agent',
-    description: '智能符号回归分析系统',
-    welcomeMessage: '输入您的数据文件路径，开始符号回归分析'
-  },
-  ui: {
-    title: 'Agent',
-    features: {
-      showFileExplorer: true,
-      showSessionList: true
-    }
-  },
-  files: {
-    outputDirectory: 'output',
-    watchDirectories: ['output']
-  },
-  websocket: {
-    host: 'localhost',
-    port: 8000
-  }
-}
+import { AgentConfig } from '../types'
+import { configService } from '../services/config'
 
 export function useAgentConfig() {
-  const [config, setConfig] = useState<AgentConfig>(defaultConfig)
+  const [config, setConfig] = useState<AgentConfig | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    const fetchConfig = async () => {
+    const loadConfig = async () => {
       try {
-        const response = await axios.get('/api/config')
-        setConfig(response.data)
+        const loadedConfig = await configService.loadConfig()
+        setConfig(loadedConfig)
         
         // Update document title
-        if (response.data.ui?.title) {
-          document.title = response.data.ui.title
+        if (loadedConfig.ui?.title) {
+          document.title = loadedConfig.ui.title
         }
       } catch (err) {
         console.error('Failed to load agent config:', err)
         setError('Failed to load configuration')
-        // Use default config on error
       } finally {
         setLoading(false)
       }
     }
 
-    fetchConfig()
+    loadConfig()
+
+    // Subscribe to config changes
+    const unsubscribe = configService.onChange((newConfig) => {
+      setConfig(newConfig)
+      if (newConfig.ui?.title) {
+        document.title = newConfig.ui.title
+      }
+    })
+    
+    return unsubscribe
   }, [])
 
   return { config, loading, error }
