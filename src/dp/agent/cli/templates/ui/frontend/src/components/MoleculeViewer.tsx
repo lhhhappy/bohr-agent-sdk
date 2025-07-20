@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { RotateCw, ZoomIn, ZoomOut, Download } from 'lucide-react'
+import { RotateCw, ZoomIn, ZoomOut, Download, Tag } from 'lucide-react'
 
 interface MoleculeViewerProps {
   content: string
@@ -17,6 +17,7 @@ const MoleculeViewer: React.FC<MoleculeViewerProps> = ({ content, height = '500p
   const viewerInstanceRef = useRef<any>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [zoom, setZoom] = useState(100)
+  const [showLabels, setShowLabels] = useState(true)
 
   useEffect(() => {
     if (!viewerRef.current) return
@@ -44,6 +45,20 @@ const MoleculeViewer: React.FC<MoleculeViewerProps> = ({ content, height = '500p
       viewer.setStyle({}, {
         stick: {},
         sphere: { scale: 0.3 }
+      })
+      
+      // 添加元素标签
+      const atoms = viewer.getModel().selectedAtoms({})
+      atoms.forEach((atom: any) => {
+        viewer.addLabel(atom.elem, {
+          position: { x: atom.x, y: atom.y, z: atom.z },
+          backgroundColor: 'rgba(255, 255, 255, 0.8)',
+          backgroundOpacity: 0.8,
+          fontColor: 'black',
+          fontSize: 12,
+          showBackground: true,
+          alignment: 'center'
+        })
       })
       
       // 自动缩放并渲染
@@ -89,6 +104,30 @@ const MoleculeViewer: React.FC<MoleculeViewerProps> = ({ content, height = '500p
     viewerInstanceRef.current.render()
   }
 
+  // 添加或移除标签
+  const updateLabels = (show: boolean) => {
+    if (!viewerInstanceRef.current) return
+    
+    viewerInstanceRef.current.removeAllLabels()
+    
+    if (show) {
+      const atoms = viewerInstanceRef.current.getModel().selectedAtoms({})
+      atoms.forEach((atom: any) => {
+        viewerInstanceRef.current.addLabel(atom.elem, {
+          position: { x: atom.x, y: atom.y, z: atom.z },
+          backgroundColor: 'rgba(255, 255, 255, 0.8)',
+          backgroundOpacity: 0.8,
+          fontColor: 'black',
+          fontSize: 12,
+          showBackground: true,
+          alignment: 'center'
+        })
+      })
+    }
+    
+    viewerInstanceRef.current.render()
+  }
+
   // 切换样式
   const handleStyleChange = (style: string) => {
     if (!viewerInstanceRef.current) return
@@ -108,6 +147,8 @@ const MoleculeViewer: React.FC<MoleculeViewerProps> = ({ content, height = '500p
         break
     }
     
+    // 保持标签显示
+    updateLabels(showLabels)
     viewerInstanceRef.current.render()
   }
 
@@ -156,6 +197,25 @@ const MoleculeViewer: React.FC<MoleculeViewerProps> = ({ content, height = '500p
             disabled={isLoading}
           >
             <RotateCw className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+          </button>
+          
+          <div className="w-px h-6 bg-gray-300 dark:bg-gray-600 mx-1" />
+          
+          {/* 标签切换 */}
+          <button
+            onClick={() => {
+              setShowLabels(!showLabels)
+              updateLabels(!showLabels)
+            }}
+            className={`p-2 rounded-md transition-colors ${
+              showLabels 
+                ? 'bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400' 
+                : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400'
+            }`}
+            title={showLabels ? '隐藏元素标签' : '显示元素标签'}
+            disabled={isLoading}
+          >
+            <Tag className="w-4 h-4" />
           </button>
           
           <div className="w-px h-6 bg-gray-300 dark:bg-gray-600 mx-1" />
