@@ -43,8 +43,15 @@ const MoleculeViewer: React.FC<MoleculeViewerProps> = ({ content, height = '500p
       
       // 设置样式 - 球棍模型
       viewer.setStyle({}, {
-        stick: {},
-        sphere: { scale: 0.3 }
+        stick: { 
+          radius: 0.15,
+          colorscheme: 'Jmol',
+          singleBonds: true
+        },
+        sphere: { 
+          scale: 0.3, 
+          colorscheme: 'Jmol' 
+        }
       })
       
       // 添加元素标签
@@ -64,6 +71,23 @@ const MoleculeViewer: React.FC<MoleculeViewerProps> = ({ content, height = '500p
       // 自动缩放并渲染
       viewer.zoomTo()
       viewer.render()
+      
+      // 强制重新渲染以确保正确显示
+      setTimeout(() => {
+        // 重新应用样式以避免渲染问题
+        viewer.setStyle({}, {
+          stick: { 
+            radius: 0.15,
+            colorscheme: 'Jmol',
+            singleBonds: true
+          },
+          sphere: { 
+            scale: 0.3, 
+            colorscheme: 'Jmol' 
+          }
+        })
+        viewer.render()
+      }, 100)
     }
 
     script.onerror = () => {
@@ -134,16 +158,32 @@ const MoleculeViewer: React.FC<MoleculeViewerProps> = ({ content, height = '500p
     
     switch (style) {
       case 'stick':
-        viewerInstanceRef.current.setStyle({}, { stick: {} })
+        viewerInstanceRef.current.setStyle({}, { 
+          stick: { 
+            radius: 0.15,
+            colorscheme: 'Jmol',
+            singleBonds: true
+          } 
+        })
         break
       case 'sphere':
-        viewerInstanceRef.current.setStyle({}, { sphere: {} })
+        viewerInstanceRef.current.setStyle({}, { sphere: { colorscheme: 'Jmol' } })
         break
       case 'ball-stick':
-        viewerInstanceRef.current.setStyle({}, { stick: {}, sphere: { scale: 0.3 } })
+        viewerInstanceRef.current.setStyle({}, { 
+          stick: { 
+            radius: 0.15,
+            colorscheme: 'Jmol',
+            singleBonds: true
+          }, 
+          sphere: { 
+            scale: 0.3, 
+            colorscheme: 'Jmol' 
+          } 
+        })
         break
       case 'cartoon':
-        viewerInstanceRef.current.setStyle({}, { cartoon: {} })
+        viewerInstanceRef.current.setStyle({}, { cartoon: { colorscheme: 'Jmol' } })
         break
     }
     
