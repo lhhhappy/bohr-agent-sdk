@@ -1,11 +1,13 @@
 import React, { useState, useCallback } from 'react'
-import { ChevronRight, ChevronDown, File, Folder, FileText, Loader2, X, Copy, Check, Maximize2, Minimize2 } from 'lucide-react'
+import { ChevronRight, ChevronDown, File, Folder, FileText, Loader2, X, Copy, Check, Maximize2, Minimize2, Image, Atom } from 'lucide-react'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { motion, AnimatePresence } from 'framer-motion'
 import axios from 'axios'
+import ImageViewer from './ImageViewer'
+import MoleculeViewer from './MoleculeViewer'
 
 const API_BASE_URL = ''
 
@@ -38,7 +40,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
   const [selectedFileContent, setSelectedFileContent] = useState<string | null>(null)
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null)
   const [loadingFiles, setLoadingFiles] = useState<Set<string>>(new Set())
-  const [fileContentCache, setFileContentCache] = useState<Map<string, string>>(new Map())
+  const [fileContentCache, setFileContentCache] = useState<Map<string, string | { type: 'image' | 'molecule'; url?: string; content?: string }>>(new Map())
   const [isFileContentExpanded, setIsFileContentExpanded] = useState(false)
   const [copiedCode, setCopiedCode] = useState<string | null>(null)
   // 文件树宽度固定，不再需要调整
@@ -105,7 +107,12 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
       setSelectedFilePath(path)
       
       if (fileContentCache.has(path)) {
-        setSelectedFileContent(fileContentCache.get(path)!)
+        const cached = fileContentCache.get(path)!
+        if (typeof cached === 'string') {
+          setSelectedFileContent(cached)
+        } else {
+          setSelectedFileContent(null) // For special file types
+        }
         return
       }
       
@@ -114,12 +121,30 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
       setLoadingFiles(prev => new Set(prev).add(path))
       
       try {
-        const response = await axios.get(`${API_BASE_URL}/api/files/${path}`, {
-          responseType: 'text'
-        })
+        const ext = path.split('.').pop()?.toLowerCase()
+        const isImage = ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'].includes(ext || '')
+        const isMolecule = ext === 'xyz'
         
-        setFileContentCache(prev => new Map(prev).set(path, response.data))
-        setSelectedFileContent(response.data)
+        if (isImage) {
+          // For images, we'll use the file URL directly
+          const imageUrl = `${API_BASE_URL}/api/files/${path}`
+          setFileContentCache(prev => new Map(prev).set(path, { type: 'image', url: imageUrl }))
+          setSelectedFileContent(null)
+        } else if (isMolecule) {
+          // For molecules, we need to fetch the content
+          const response = await axios.get(`${API_BASE_URL}/api/files/${path}`, {
+            responseType: 'text'
+          })
+          setFileContentCache(prev => new Map(prev).set(path, { type: 'molecule', content: response.data }))
+          setSelectedFileContent(null)
+        } else {
+          // For other files, fetch as text
+          const response = await axios.get(`${API_BASE_URL}/api/files/${path}`, {
+            responseType: 'text'
+          })
+          setFileContentCache(prev => new Map(prev).set(path, response.data))
+          setSelectedFileContent(response.data)
+        }
       } catch (error) {
         console.error('Error loading file:', error)
         const errorMsg = '加载文件失败: ' + (error as any).message
@@ -146,10 +171,28 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
       'js': 'text-yellow-400',
       'ts': 'text-blue-600',
       'log': 'text-gray-500',
+      'png': 'text-pink-500',
+      'jpg': 'text-pink-500',
+      'jpeg': 'text-pink-500',
+      'gif': 'text-pink-500',
+      'svg': 'text-pink-500',
+      'webp': 'text-pink-500',
+      'xyz': 'text-cyan-500',
     }
     
     const color = colorMap[ext || ''] || 'text-gray-400'
     
+    // Image files
+    if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'].includes(ext || '')) {
+      return <Image className={`w-4 h-4 ${color}`} />
+    }
+    
+    // Molecule files
+    if (ext === 'xyz') {
+      return <Atom className={`w-4 h-4 ${color}`} />
+    }
+    
+    // Text files
     if (['md', 'txt', 'json', 'csv', 'log'].includes(ext || '')) {
       return <FileText className={`w-4 h-4 ${color}`} />
     }
@@ -371,54 +414,93 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
 
         {/* File Content */}
         <div className="flex-1 flex flex-col bg-gray-50 dark:bg-gray-900" style={{ minWidth: '400px' }}>
-          {selectedFileContent ? (
-            <>
-              <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  {getFileIcon(selectedFilePath?.split('/').pop() || '')}
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                    {selectedFilePath?.split('/').pop()}
-                  </span>
+          {(() => {
+            const cached = selectedFilePath ? fileContentCache.get(selectedFilePath) : null
+            
+            if (!selectedFilePath) {
+              return (
+                <div className="flex-1 flex items-center justify-center text-gray-500 dark:text-gray-400">
+                  <div className="text-center">
+                    <FileText className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                    <p className="text-sm">选择文件查看内容</p>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => handleCopyCode(selectedFileContent)}
-                    className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors"
-                    title="复制内容"
-                  >
-                    {copiedCode === selectedFileContent ? (
-                      <Check className="w-4 h-4 text-green-500" />
-                    ) : (
-                      <Copy className="w-4 h-4 text-gray-500" />
+              )
+            }
+            
+            if (cached && typeof cached === 'object') {
+              // Special file types (images, molecules)
+              return (
+                <>
+                  <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      {getFileIcon(selectedFilePath?.split('/').pop() || '')}
+                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                        {selectedFilePath?.split('/').pop()}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex-1 overflow-auto bg-white dark:bg-gray-800">
+                    {cached.type === 'image' && cached.url && (
+                      <ImageViewer src={cached.url} alt={selectedFilePath.split('/').pop()} />
                     )}
-                  </button>
-                  <button
-                    onClick={() => setIsFileContentExpanded(!isFileContentExpanded)}
-                    className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors"
-                    title={isFileContentExpanded ? '收起' : '展开'}
-                  >
-                    {isFileContentExpanded ? (
-                      <Minimize2 className="w-4 h-4 text-gray-500" />
-                    ) : (
-                      <Maximize2 className="w-4 h-4 text-gray-500" />
+                    {cached.type === 'molecule' && cached.content && (
+                      <div className="p-6">
+                        <MoleculeViewer content={cached.content} height="600px" />
+                      </div>
                     )}
-                  </button>
-                </div>
-              </div>
-              <div className="flex-1 overflow-auto p-6 bg-white dark:bg-gray-800">
-                <div className="max-w-none">
-                  {renderFileContent(selectedFileContent, selectedFilePath || '')}
-                </div>
-              </div>
-            </>
-          ) : (
-            <div className="flex-1 flex items-center justify-center text-gray-500 dark:text-gray-400">
-              <div className="text-center">
-                <FileText className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                <p className="text-sm">选择文件查看内容</p>
-              </div>
-            </div>
-          )}
+                  </div>
+                </>
+              )
+            }
+            
+            if (selectedFileContent) {
+              // Regular text files
+              return (
+                <>
+                  <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      {getFileIcon(selectedFilePath?.split('/').pop() || '')}
+                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                        {selectedFilePath?.split('/').pop()}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleCopyCode(selectedFileContent)}
+                        className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors"
+                        title="复制内容"
+                      >
+                        {copiedCode === selectedFileContent ? (
+                          <Check className="w-4 h-4 text-green-500" />
+                        ) : (
+                          <Copy className="w-4 h-4 text-gray-500" />
+                        )}
+                      </button>
+                      <button
+                        onClick={() => setIsFileContentExpanded(!isFileContentExpanded)}
+                        className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors"
+                        title={isFileContentExpanded ? '收起' : '展开'}
+                      >
+                        {isFileContentExpanded ? (
+                          <Minimize2 className="w-4 h-4 text-gray-500" />
+                        ) : (
+                          <Maximize2 className="w-4 h-4 text-gray-500" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex-1 overflow-auto p-6 bg-white dark:bg-gray-800">
+                    <div className="max-w-none">
+                      {renderFileContent(selectedFileContent, selectedFilePath || '')}
+                    </div>
+                  </div>
+                </>
+              )
+            }
+            
+            return null
+          })()}
         </div>
       </div>
     </div>

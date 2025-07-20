@@ -16,7 +16,8 @@
     "socket.io-client": "^4.5.4",
     "date-fns": "^2.30.0",
     "classnames": "^2.3.2",
-    "@tailwindcss/typography": "^0.5.10"
+    "@tailwindcss/typography": "^0.5.10",
+    "3dmol": "^2.0.5"
   },
   "devDependencies": {
     "@types/react": "^18.2.0",
