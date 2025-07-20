@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react'
-import { ChevronRight, ChevronDown, File, Folder, FileText, Loader2, X, Copy, Check, Maximize2, Minimize2, Image, Atom } from 'lucide-react'
+import { ChevronRight, File, Folder, FileText, Loader2, X, Copy, Check, Maximize2, Minimize2, Image, Atom } from 'lucide-react'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import ReactMarkdown from 'react-markdown'
@@ -30,13 +30,11 @@ interface FileExplorerProps {
 }
 
 const FileExplorer: React.FC<FileExplorerProps> = ({
-  isOpen,
   onClose,
   fileTree,
   onFileTreeUpdate,
   onLoadFileTree
 }) => {
-  const [selectedFiles, setSelectedFiles] = useState<string[]>([])
   const [selectedFileContent, setSelectedFileContent] = useState<string | null>(null)
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null)
   const [loadingFiles, setLoadingFiles] = useState<Set<string>>(new Set())
@@ -445,9 +443,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
                       <ImageViewer src={cached.url} alt={selectedFilePath.split('/').pop()} />
                     )}
                     {cached.type === 'molecule' && cached.content && (
-                      <div className="p-6">
-                        <MoleculeViewer content={cached.content} height="600px" />
-                      </div>
+                      <MoleculeViewer content={cached.content} height="600px" />
                     )}
                   </div>
                 </>

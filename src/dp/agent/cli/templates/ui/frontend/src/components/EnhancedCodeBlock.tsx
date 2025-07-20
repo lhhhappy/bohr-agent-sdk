@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Copy, Check, Download } from 'lucide-react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 
 interface EnhancedCodeBlockProps {
   language: string;
@@ -112,7 +112,7 @@ export const EnhancedCodeBlock: React.FC<EnhancedCodeBlockProps> = React.memo(({
 
 // 用于替换Markdown中的代码块
 export const createCodeComponent = () => {
-  return React.memo(({ node, inline, className, children, ...props }: any) => {
+  return React.memo(({ inline, className, children }: any) => {
     const match = /language-(\w+)/.exec(className || '');
     const language = match ? match[1] : 'text';
     

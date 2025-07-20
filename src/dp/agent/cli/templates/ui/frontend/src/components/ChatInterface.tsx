@@ -58,7 +58,7 @@ const ChatInterface: React.FC = () => {
   const loadingTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   
   // Load agent configuration
-  const { config, loading: configLoading } = useAgentConfig()
+  const { config } = useAgentConfig()
 
   useEffect(() => {
     scrollToBottom()
@@ -183,7 +183,7 @@ const ChatInterface: React.FC = () => {
 
   const loadFileTree = async () => {
     try {
-      const outputDir = config.files?.outputDirectory || 'output'
+      const outputDir = config?.files?.outputDirectory || 'output'
       const response = await axios.get(`${API_BASE_URL}/api/files/tree?path=${outputDir}`)
       let files = response.data
       
@@ -460,7 +460,7 @@ const ChatInterface: React.FC = () => {
         <div className="px-4 py-3 border-b border-gray-200/50 dark:border-gray-700/50 glass-premium glass-glossy flex items-center justify-between">
           <div className="flex items-center gap-3">
             <h1 className="text-lg font-semibold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-              {config.ui?.title || 'Agent'}
+              {config?.ui?.title || 'Agent'}
             </h1>
           </div>
           <div className="flex items-center gap-3">
@@ -507,10 +507,10 @@ const ChatInterface: React.FC = () => {
                 <div className="text-center">
                   <Bot className="w-16 h-16 mx-auto mb-4 text-gray-300 dark:text-gray-600" />
                   <h3 className="text-lg font-medium text-gray-600 dark:text-gray-400 mb-2">
-                    欢迎使用 {config.agent?.name || 'Agent'}
+                    欢迎使用 {config?.agent?.name || 'Agent'}
                   </h3>
                   <p className="text-sm text-gray-500 dark:text-gray-500">
-                    {config.agent?.welcomeMessage || 'welcome to chat with me'}
+                    {config?.agent?.welcomeMessage || 'welcome to chat with me'}
                   </p>
                 </div>
               </div>

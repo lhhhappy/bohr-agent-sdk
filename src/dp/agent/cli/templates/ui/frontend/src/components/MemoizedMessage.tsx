@@ -16,7 +16,6 @@ interface MessageProps {
 }
 
 export const MemoizedMessage = React.memo<MessageProps>(({
-  id,
   role,
   content,
   timestamp,

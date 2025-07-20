@@ -44,7 +44,8 @@ const Button: React.FC<ButtonProps> = ({
         className
       )}
       disabled={disabled || loading}
-      {...props}
+      onClick={props.onClick}
+      type={props.type}
     >
       {loading ? (
         <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />

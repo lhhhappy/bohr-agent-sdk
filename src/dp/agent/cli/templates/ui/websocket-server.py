@@ -153,16 +153,12 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         try:
             # 简单记录请求信息
             logger.info(f"收到请求: {request.method} {request.url.path}")
-        except Exception as e:
-            # 记录错误但继续处理
-            logger.error(f"日志记录错误: {e}")
+        except:
+            # 忽略任何日志错误
+            pass
         
-        try:
-            response = await call_next(request)
-            return response
-        except Exception as e:
-            logger.error(f"处理请求时出错: {e}")
-            return PlainTextResponse(content="Internal Server Error", status_code=500)
+        response = await call_next(request)
+        return response
 
 # Host 验证中间件
 class HostValidationMiddleware(BaseHTTPMiddleware):
@@ -178,10 +174,9 @@ class HostValidationMiddleware(BaseHTTPMiddleware):
         return response
 
 # 注意：中间件按相反顺序执行，最后添加的最先执行
-# 所以先添加 RequestLogging，再添加 HostValidation
-# 这样 HostValidation 先执行，RequestLogging 最后执行
-app.add_middleware(RequestLoggingMiddleware)
+# 所以先添加 HostValidation，再添加 RequestLogging
 app.add_middleware(HostValidationMiddleware)
+app.add_middleware(RequestLoggingMiddleware)
 
 
 class ConnectionContext:
