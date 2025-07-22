@@ -68,7 +68,6 @@ class ConfigService {
         },
       },
       files: {
-        outputDirectory: './output',
         watchDirectories: ['./output'],
       },
       server: {

@@ -1,136 +1,165 @@
 # UI 开发者指南
 
-本文档说明如何开发和更新 bohr-agent-sdk 的前端 UI。
+本文档说明如何开发和拓展 bohr-agent-sdk 的前端 UI。
 
 ## 目录结构
 
 ```
 ui/
-├── frontend/           # React 前端源码
-│   ├── src/           # 源代码
-│   ├── public/        # 静态资源
-│   ├── dist/          # 构建输出（git 已忽略）
-│   └── package.json   # 前端依赖
-├── scripts/           # 构建脚本
-│   ├── build_ui.py    # 前端构建脚本
-│   └── package_with_ui.sh # 完整打包脚本
-├── websocket-server.py # WebSocket 服务端
-└── ui_utils.py        # UI 启动管理器
-
+├── frontend/                  # React 前端源码
+│   ├── src/                  # 源代码目录
+│   │   ├── components/       # UI 组件
+│   │   │   ├── ChatInterface.tsx    # 聊天界面主组件
+│   │   │   ├── FileExplorer.tsx    # 文件浏览器
+│   │   │   ├── ShellTerminal.tsx   # 终端组件
+│   │   │   ├── MoleculeViewer.tsx  # 分子查看器
+│   │   │   └── ...                 # 其他组件
+│   │   ├── api/             # API 客户端
+│   │   ├── hooks/           # React Hooks
+│   │   ├── services/        # 服务层（WebSocket、配置等）
+│   │   ├── types/           # TypeScript 类型定义
+│   │   └── App.tsx          # 应用主入口
+│   ├── public/              # 静态资源
+│   ├── ui-static/           # 构建输出（git 已忽略）
+│   └── package.json         # 前端依赖
+├── config/                  # 配置文件
+│   ├── agent-config.default.json  # 默认配置模板
+│   └── agent_config.py           # 配置解析器
+├── scripts/                 # 构建脚本
+│   ├── build_ui.py         # 前端构建脚本
+│   └── package_with_ui.sh  # 完整打包脚本
+├── websocket-server.py      # WebSocket 服务端
+└── ui_utils.py             # UI 启动管理器
 ```
 
-## 开发流程
+## 前置要求
 
-### 1. 本地开发
+### 对于普通用户（只使用 UI）
+- Python 3.8+
+- pip
+
+### 对于 UI 开发者（修改前端代码）
+- Node.js 16+ 和 npm/yarn
+- Python 3.8+
+- Git
+
+## 安装指南
+
+### 1. 对于普通用户
 
 ```bash
+# 直接通过 pip 安装即可，已包含预构建的静态文件
+pip install git+https://github.com/lhhhappy/bohr-agent-sdk.git@main #目前
+```
+
+### 2. 使用 UI
+
+```bash
+# 使用配置文件运行
+dp-agent run agent --config agent-config.json
+```
+
+## 如何拓展 UI
+
+### 1. 添加新组件
+
+在 `frontend/src/components/` 目录下创建新组件：
+
+```tsx
+// 例如: frontend/src/components/MyNewComponent.tsx
+import React from 'react';
+
+interface MyNewComponentProps {
+  title: string;
+  onAction?: () => void;
+}
+
+export const MyNewComponent: React.FC<MyNewComponentProps> = ({ title, onAction }) => {
+  return (
+    <div className="p-4 bg-white rounded-lg shadow">
+      <h3 className="text-lg font-semibold">{title}</h3>
+      <button 
+        onClick={onAction}
+        className="mt-2 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+      >
+        Action
+      </button>
+    </div>
+  );
+};
+```
+
+### 2. 集成新功能
+
+#### 2.1 添加 API 调用
+
+在 `frontend/src/api/client.ts` 中添加新的 API 方法：
+
+```typescript
+export const apiClient = {
+  // 现有方法...
+  
+  // 添加新方法
+  async myNewApiCall(params: any) {
+    const response = await axios.post('/api/my-endpoint', params);
+    return response.data;
+  }
+};
+```
+
+#### 2.2 添加 WebSocket 事件
+
+在 `frontend/src/services/websocket.ts` 中处理新的事件：
+
+```typescript
+socket.on('my_new_event', (data) => {
+  console.log('Received new event:', data);
+  // 处理事件
+});
+```
+
+### 3. 自定义主题和样式
+
+修改 `frontend/src/styles/index.css` 或使用 Tailwind CSS 类：
+
+```css
+/* 自定义主题变量 */
+:root {
+  --primary-color: #3b82f6;
+  --secondary-color: #10b981;
+  --background-color: #f3f4f6;
+}
+
+/* 自定义组件样式 */
+.my-custom-class {
+  background-color: var(--primary-color);
+  /* ... */
+}
+```
+
+## 开发流程（仅限 UI 开发者）
+
+### 1. 开发环境设置
+
+```bash
+# 克隆项目
+git clone https://github.com/lhhhappy/bohr-agent-sdk.git
+cd bohr-agent-sdk
+
+# 安装开发依赖
+pip install -e .
+
 # 进入前端目录
 cd src/dp/agent/cli/templates/ui/frontend
-
-# 安装依赖（首次）
 npm install
-
-# 启动开发服务器
-npm run dev
 ```
 
-然后在另一个终端启动后端：
+### 2. 开发和测试
 
 ```bash
-# 在项目根目录
-dp-agent run agent --dev
-```
+# 在前端目录开发
+npm run dev  # 启动开发服务器，支持热重载
 
-### 2. 更新前端
-
-#### 2.1 修改代码
-
-在 `frontend/src` 下修改相应的组件或页面。
-
-#### 2.2 测试修改
-
-```bash
-# 开发模式测试
-dp-agent run agent --dev
-
-# 生产模式测试（需要先构建）
-cd src/dp/agent/cli/templates/ui/frontend
+# 构建前端
 npm run build
-dp-agent run agent  # 默认使用生产模式
-```
-
-#### 2.3 构建前端
-
-```bash
-# 方式1：直接在前端目录构建
-cd src/dp/agent/cli/templates/ui/frontend
-npm run build
-
-# 方式2：使用构建脚本
-python src/dp/agent/cli/templates/ui/scripts/build_ui.py
-```
-
-### 3. 发布新版本
-
-#### 3.1 完整发布流程
-
-```bash
-# 1. 更新版本号
-# 编辑 pyproject.toml 或 setup.py，增加版本号
-
-# 2. 构建并打包
-bash src/dp/agent/cli/templates/ui/scripts/package_with_ui.sh
-
-# 3. 上传到 PyPI
-twine upload dist/*
-
-# 4. 创建 Git tag
-git tag v0.1.13
-git push origin v0.1.13
-```
-
-#### 3.2 快速更新（仅前端改动）
-
-如果只是前端的小改动：
-
-```bash
-# 1. 构建前端
-cd src/dp/agent/cli/templates/ui/frontend
-npm run build
-
-# 2. 更新补丁版本号 (如 0.1.12 -> 0.1.13)
-# 编辑 pyproject.toml
-
-# 3. 重新打包发布
-cd 项目根目录
-python -m build
-twine upload dist/*
-```
-
-## 注意事项
-
-1. **不要提交 dist 目录**：前端构建产物已在 .gitignore 中，打包时会自动构建。
-
-2. **版本管理**：即使是前端的小改动，也需要更新 Python 包版本号。
-
-3. **依赖更新**：如果更新了前端依赖，记得提交 `package-lock.json`。
-
-4. **测试**：发布前请在生产模式下测试。
-
-## 常见问题
-
-### Q: 为什么前端改动需要发布整个包？
-
-A: 这是当前的设计决策，确保用户获得一致的体验。未来可能会支持独立的前端更新机制。
-
-### Q: 如何调试前端？
-
-A: 使用 `--dev` 模式运行，前端会启动在开发模式，支持热重载和调试。
-
-### Q: 构建失败怎么办？
-
-A: 检查 Node.js 版本（建议 16+），清理 node_modules 重新安装：
-```bash
-rm -rf node_modules package-lock.json
-npm install
 ```

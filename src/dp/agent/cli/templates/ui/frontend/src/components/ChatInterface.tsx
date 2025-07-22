@@ -87,6 +87,32 @@ const ChatInterface: React.FC = () => {
   const [ws, setWs] = useState<WebSocket | null>(null)
   const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected')
 
+  // Define loadFileTree before using it
+  const loadFileTree = useCallback(async () => {
+    try {
+      // Get file tree for all watched directories
+      const response = await axios.get(`${API_BASE_URL}/api/files/tree`)
+      let files = response.data
+      
+      if (!files || files.length === 0) {
+        setFileTree([])
+        return
+      }
+      
+      // Ensure all root directories are expanded
+      files.forEach((node: any) => {
+        if (node.type === 'directory') {
+          node.isExpanded = true
+        }
+      })
+      
+      setFileTree(files)
+    } catch (error) {
+      console.error('Error loading file tree:', error)
+      setFileTree([])
+    }
+  }, [])
+
   useEffect(() => {
     // Load initial file tree
     loadFileTree()
@@ -162,7 +188,7 @@ const ChatInterface: React.FC = () => {
         currentWebSocket.close()
       }
     }
-  }, [])
+  }, [loadFileTree])
 
   const scrollToBottom = () => {
     // 使用setTimeout确保DOM更新后再滚动
@@ -179,51 +205,6 @@ const ChatInterface: React.FC = () => {
         })
       }
     }, 100)
-  }
-
-  const loadFileTree = async () => {
-    try {
-      const outputDir = config?.files?.outputDirectory || 'output'
-      const response = await axios.get(`${API_BASE_URL}/api/files/tree?path=${outputDir}`)
-      let files = response.data
-      
-      if (!files || files.length === 0) {
-        setFileTree([{
-          name: 'output',
-          path: 'output',
-          type: 'directory',
-          isExpanded: true,
-          children: []
-        }])
-        return
-      }
-      
-      let outputNode = files.find((f: any) => f.name === 'output' && f.type === 'directory')
-      
-      if (!outputNode) {
-        outputNode = {
-          name: 'output',
-          path: 'output',
-          type: 'directory',
-          isExpanded: true,
-          children: files
-        }
-        files = [outputNode]
-      } else {
-        outputNode.isExpanded = true
-      }
-      
-      setFileTree(files)
-    } catch (error) {
-      console.error('Error loading file tree:', error)
-      setFileTree([{
-        name: 'output',
-        path: 'output',
-        type: 'directory',
-        isExpanded: true,
-        children: []
-      }])
-    }
   }
 
   // Session management functions
@@ -431,7 +412,16 @@ const ChatInterface: React.FC = () => {
       setMessages(prev => [...prev, errorMessage])
       setIsLoading(false)
     }
-  }, [])
+    
+    if (type === 'file_change') {
+      // Handle file change notification
+      const { event_type, relative_path, watch_directory } = data
+      console.log(`File ${event_type}: ${relative_path} in ${watch_directory}`)
+      
+      // Automatically refresh the file tree when files change
+      loadFileTree()
+    }
+  }, [loadFileTree])
 
   return (
     <div className="flex h-screen bg-gray-50 dark:bg-gray-900">

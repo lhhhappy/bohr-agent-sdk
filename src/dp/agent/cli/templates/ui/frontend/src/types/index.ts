@@ -54,7 +54,6 @@ export interface AgentConfig {
     }
   }
   files: {
-    outputDirectory: string
     watchDirectories: string[]
   }
   server: {

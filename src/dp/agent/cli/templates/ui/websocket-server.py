@@ -36,6 +36,8 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp, Receive, Scope, Send
 import uvicorn
 import logging
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler, FileSystemEvent
 
 from google.adk import Runner
 from google.adk.sessions import InMemorySessionService
@@ -179,6 +181,79 @@ app.add_middleware(HostValidationMiddleware)
 app.add_middleware(RequestLoggingMiddleware)
 
 
+class FileChangeHandler(FileSystemEventHandler):
+    """处理文件系统变化事件"""
+    def __init__(self, context: 'ConnectionContext', watch_path: str):
+        self.context = context
+        self.watch_path = watch_path
+        self.last_event_time = {}
+        self.debounce_seconds = 0.5  # 防抖时间
+        
+    def should_ignore_path(self, path: str) -> bool:
+        """检查是否应该忽略该路径"""
+        # 忽略隐藏文件和临时文件
+        path_obj = Path(path)
+        for part in path_obj.parts:
+            if part.startswith('.') or part.endswith('~') or part.endswith('.tmp'):
+                return True
+        return False
+        
+    def debounce_event(self, event_key: str) -> bool:
+        """事件防抖，避免重复事件"""
+        current_time = time.time()
+        last_time = self.last_event_time.get(event_key, 0)
+        
+        if current_time - last_time < self.debounce_seconds:
+            return True  # 应该忽略这个事件
+            
+        self.last_event_time[event_key] = current_time
+        return False
+        
+    async def notify_file_change(self, event_type: str, path: str):
+        """通知前端文件变化"""
+        try:
+            # 计算相对路径
+            rel_path = os.path.relpath(path, self.watch_path)
+            
+            await self.context.websocket.send_json({
+                "type": "file_change",
+                "event_type": event_type,
+                "path": path,
+                "relative_path": rel_path,
+                "watch_directory": self.watch_path,
+                "timestamp": datetime.now().isoformat()
+            })
+            logger.info(f"文件变化通知: {event_type} - {rel_path}")
+        except Exception as e:
+            logger.error(f"发送文件变化通知失败: {e}")
+            
+    def on_any_event(self, event: FileSystemEvent):
+        """处理所有文件系统事件"""
+        if event.is_directory:
+            return  # 暂时忽略目录事件
+            
+        if self.should_ignore_path(event.src_path):
+            return
+            
+        # 防抖处理
+        event_key = f"{event.event_type}:{event.src_path}"
+        if self.debounce_event(event_key):
+            return
+            
+        # 映射事件类型
+        event_map = {
+            'created': 'created',
+            'modified': 'modified',
+            'deleted': 'deleted',
+            'moved': 'moved'
+        }
+        
+        event_type = event_map.get(event.event_type, event.event_type)
+        
+        # 使用 asyncio 在事件循环中运行异步通知
+        asyncio.create_task(self.notify_file_change(event_type, event.src_path))
+
+
 class ConnectionContext:
     """每个WebSocket连接的独立上下文"""
     def __init__(self, websocket: WebSocket):
@@ -195,6 +270,61 @@ class ConnectionContext:
         }
         # 为每个连接生成唯一的user_id
         self.user_id = f"user_{uuid.uuid4().hex[:8]}"
+        # 文件监视器
+        self.file_observers: List[Observer] = []
+        self._setup_file_watchers()
+    
+    def _setup_file_watchers(self):
+        """设置文件监视器"""
+        try:
+            # 从配置获取要监视的目录
+            files_config = agentconfig.get_files_config()
+            watch_directories = files_config.get("watch_directories", files_config.get("watchDirectories", []))
+            
+            if not watch_directories:
+                logger.info("未配置监视目录")
+                return
+                
+            user_working_dir = os.environ.get('USER_WORKING_DIR', os.getcwd())
+            
+            for watch_dir in watch_directories:
+                # 处理相对路径
+                if not os.path.isabs(watch_dir):
+                    watch_path = os.path.join(user_working_dir, watch_dir)
+                else:
+                    watch_path = watch_dir
+                    
+                watch_path = os.path.normpath(watch_path)
+                
+                # 确保目录存在
+                if not os.path.exists(watch_path):
+                    os.makedirs(watch_path, exist_ok=True)
+                    logger.info(f"创建监视目录: {watch_path}")
+                
+                if os.path.isdir(watch_path):
+                    # 创建文件监视器
+                    observer = Observer()
+                    handler = FileChangeHandler(self, watch_path)
+                    observer.schedule(handler, watch_path, recursive=True)
+                    observer.start()
+                    self.file_observers.append(observer)
+                    logger.info(f"开始监视目录: {watch_path}")
+                else:
+                    logger.warning(f"监视路径不是目录: {watch_path}")
+                    
+        except Exception as e:
+            logger.error(f"设置文件监视器失败: {e}")
+    
+    def cleanup(self):
+        """清理资源"""
+        # 停止所有文件监视器
+        for observer in self.file_observers:
+            try:
+                observer.stop()
+                observer.join(timeout=1)
+            except Exception as e:
+                logger.error(f"停止文件监视器失败: {e}")
+        self.file_observers.clear()
 
 class SessionManager:
     def __init__(self):
@@ -306,6 +436,8 @@ class SessionManager:
         if websocket in self.active_connections:
             context = self.active_connections[websocket]
             logger.info(f"用户断开连接: {context.user_id}")
+            # 清理文件监视器
+            context.cleanup()
             # 清理该连接的所有资源
             del self.active_connections[websocket]
     
@@ -657,19 +789,9 @@ async def websocket_endpoint(websocket: WebSocket):
 async def get_file_tree(path: str = None):
     """获取文件树结构"""
     try:
-        # Use configured output directory if no path specified
-        if path is None:
-            output_dir = agentconfig.get_files_config().get("outputDirectory", "output")
-            # Use user's working directory from environment variable
-            user_working_dir = os.environ.get('USER_WORKING_DIR', Path.cwd())
-            base_path = Path(user_working_dir) / output_dir
-        else:
-            # Always resolve paths relative to user's working directory
-            user_working_dir = os.environ.get('USER_WORKING_DIR', Path.cwd())
-            base_path = Path(user_working_dir) / path
-        if not base_path.exists():
-            base_path.mkdir(parents=True, exist_ok=True)
-            
+        user_working_dir = os.environ.get('USER_WORKING_DIR', Path.cwd())
+        files_config = agentconfig.get_files_config()
+        
         def build_tree(directory: Path):
             items = []
             try:
@@ -693,7 +815,48 @@ async def get_file_tree(path: str = None):
                 pass
             return items
         
-        return JSONResponse(content=build_tree(base_path))
+        if path is None:
+            # Return all watched directories
+            watch_directories = files_config.get("watchDirectories", files_config.get("watch_directories", []))
+            
+            logger.info(f"Files config: {files_config}")
+            logger.info(f"Watch directories: {watch_directories}")
+            
+            # Use watch directories
+            all_directories = set(watch_directories)
+            
+            logger.info(f"All directories to show: {all_directories}")
+            
+            # Build tree for all directories
+            tree = []
+            for dir_path in sorted(all_directories):
+                # Handle relative paths
+                if not os.path.isabs(dir_path):
+                    full_path = Path(user_working_dir) / dir_path
+                else:
+                    full_path = Path(dir_path)
+                    
+                if not full_path.exists():
+                    full_path.mkdir(parents=True, exist_ok=True)
+                    
+                if full_path.is_dir():
+                    dir_node = {
+                        "name": dir_path.replace("./", ""),
+                        "path": str(full_path),
+                        "type": "directory",
+                        "isExpanded": True,
+                        "children": build_tree(full_path)
+                    }
+                    tree.append(dir_node)
+                    
+            logger.info(f"返回的文件树: {json.dumps(tree, indent=2)}")
+            return JSONResponse(content=tree)
+        else:
+            # Handle specific path request
+            base_path = Path(user_working_dir) / path
+            if not base_path.exists():
+                base_path.mkdir(parents=True, exist_ok=True)
+            return JSONResponse(content=build_tree(base_path))
         
     except Exception as e:
         logger.error(f"获取文件树错误: {e}")

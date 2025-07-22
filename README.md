@@ -38,7 +38,7 @@ dp-agent run tool cloud
 dp-agent run tool calculation
 
 # 运行代理
-dp-agent run agent
+dp-agent run agent --config config.json
 
 # 调试模式
 dp-agent run debug

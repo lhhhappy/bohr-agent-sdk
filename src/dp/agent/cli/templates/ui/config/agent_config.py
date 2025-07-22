@@ -50,7 +50,6 @@ class AgentConfig:
                 }
             },
             "files": {
-                "outputDirectory": "./output",
                 "watchDirectories": ["./output"]
             },
             "websocket": {

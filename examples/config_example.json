@@ -1,0 +1,18 @@
+{
+    "agent": {
+        "module": "examples.agent_example.agent",
+        "rootAgent": "root_agent",
+        "name": "Paper Research Assistant",
+        "welcomeMessage": "I am a paper research assistant"
+      },
+      "ui": {
+        "title": "Paper Research Assistant"
+      },
+      "files": {
+        "watchDirectories": ["tests", "examples"]
+      },
+      "server": {
+        "port": 50002,
+        "host": ["localhost", "127.0.0.1"]
+      }
+    }
