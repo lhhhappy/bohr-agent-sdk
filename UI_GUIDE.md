@@ -61,7 +61,6 @@ dp-agent run agent --config <配置文件路径>
   },
   "ui": {
     "title": "Paper Research Assistant",
-    "theme": "light"
   },
   "server": {
     "port": 50002,
