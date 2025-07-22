@@ -54,7 +54,7 @@ dp-agent run agent --config <配置文件路径>
 ```json
 {
   "agent": {
-    "module": "testagent.agent",
+    "module": "agent.agent",
     "rootAgent": "root_agent",
     "name": "Paper Research Assistant",
     "welcomeMessage": "I am a paper research assistant" 
@@ -62,10 +62,6 @@ dp-agent run agent --config <配置文件路径>
   "ui": {
     "title": "Paper Research Assistant",
     "theme": "light"
-  },
-  "files": {
-    "output_directory": "./output",
-    "watch_directories": ["./output", "./data"]
   },
   "server": {
     "port": 50002,
@@ -87,29 +83,13 @@ dp-agent run agent --config <配置文件路径>
 - **name** (string): Agent 显示名称
   - 在 UI 顶部显示
   
-- **description** (string): Agent 描述
-  - 简短介绍 Agent 功能
+- **welcomeMessage** (string): UI页面展示
   
 
 #### ui 部分（可选）
 
 - **title** (string): 浏览器标签页标题
   - 默认值: "DP Agent Assistant"
-  
-- **theme** (string): UI 主题
-  - 可选值: "light", "dark"
-  - 默认值: "light"
-
-#### files 部分（可选）
-
-- **output_directory** (string): 输出文件目录
-  - Agent 生成文件的保存位置
-  - 默认值: "./output"
-  
-- **watch_directories** (array): 监视目录列表
-  - UI 文件浏览器会显示这些目录的内容
-  - 支持实时更新
-
 #### server 部分（可选）
 
 - **port** (number): HTTP 服务器端口
@@ -118,14 +98,6 @@ dp-agent run agent --config <配置文件路径>
 - **host** (array/string): 允许访问的主机地址
   - 默认值: ["localhost", "127.0.0.1"]
   - 可以添加其他 IP 地址或域名以允许远程访问
-
-#### websocket 部分（可选）
-
-- **port** (number): WebSocket 服务器端口
-  - 默认值: 8000
-  
-- **host** (string): WebSocket 服务器地址，可以用于转发Bohrium开发机服务。
-  - 默认值: "localhost"
 
 
 ## UI 功能特性

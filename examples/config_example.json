@@ -8,9 +8,6 @@
       "ui": {
         "title": "Paper Research Assistant"
       },
-      "files": {
-        "watch_directories": ["./output", "./tests", "./examples"]
-      },
       "server": {
         "port": 50002,
         "host": ["localhost", "127.0.0.1"]
