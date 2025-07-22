@@ -821,6 +821,8 @@ async def get_file_tree(path: str = None):
             
             logger.info(f"Files config: {files_config}")
             logger.info(f"Watch directories: {watch_directories}")
+            logger.info(f"Full agent config: {agentconfig.config}")
+            logger.info(f"Config path: {os.environ.get('AGENT_CONFIG_PATH', 'Not set')}")
             
             # Use watch directories
             all_directories = set(watch_directories)

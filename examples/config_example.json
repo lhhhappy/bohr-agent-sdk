@@ -9,7 +9,7 @@
         "title": "Paper Research Assistant"
       },
       "files": {
-        "watchDirectories": ["tests", "examples"]
+        "watch_directories": ["./output", "./tests", "./examples"]
       },
       "server": {
         "port": 50002,

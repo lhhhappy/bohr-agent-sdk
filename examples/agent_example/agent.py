@@ -25,7 +25,7 @@ model_type = os.getenv('MODEL', 'deepseek/deepseek-chat')
 
 toolset = MCPToolset(
     connection_params=SseServerParams(
-        url = "https://api.xpack.ai/v1/mcp?apikey=3f29f5c1db264e9186199c39a17bbf6c"
+        url = ""
     )
 )
 
@@ -34,5 +34,5 @@ root_agent = Agent(
     name="mcp_sse_agent",
     model=LiteLlm(model=model_type),
     instruction="You are an intelligent assistant capable of using external tools.",
-    tools=[toolset]
+    tools=[]
 )
