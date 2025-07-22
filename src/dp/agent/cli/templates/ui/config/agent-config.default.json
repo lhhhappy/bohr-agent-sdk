@@ -3,25 +3,10 @@
     "module": "agent.agent",
     "rootAgent": "root_agent",
     "name": "DP Agent Assistant",
-    "description": "AI Assistant powered by DP Agent SDK",
-    "welcomeMessage": "欢迎使用 DP Agent Assistant！我可以帮助您进行科学计算、数据分析等任务。",
-    "samplePrompts": [
-      "你好，请介绍一下你自己",
-      "帮我分析这个数据文件",
-      "运行一个计算任务"
-    ]
+    "welcomeMessage": "欢迎使用 DP Agent Assistant！我可以帮助您进行科学计算、数据分析等任务。"
   },
   "ui": {
-    "title": "DP Agent Assistant",
-    "theme": "light"
-  },
-  "files": {
-    "output_directory": "./output",
-    "watch_directories": ["./output"]
-  },
-  "websocket": {
-    "port": 8000,
-    "host": "localhost"
+    "title": "DP Agent Assistant"
   },
   "server": {
     "port": 50002,

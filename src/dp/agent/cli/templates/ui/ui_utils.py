@@ -21,16 +21,7 @@ class UIConfigManager:
             "welcomeMessage": "欢迎使用 DP Agent Assistant！我可以帮助您进行科学计算、数据分析等任务。",
         },
         "ui": {
-            "title": "DP Agent Assistant",
-            "theme": "light"
-        },
-        "files": {
-            "output_directory": "./output",
-            "watch_directories": ["./output"]
-        },
-        "websocket": {
-            "port": 8000,
-            "host": "localhost"
+            "title": "DP Agent Assistant"
         },
         "server": {
             "port": 50002,
@@ -77,12 +68,7 @@ class UIConfigManager:
         if kwargs.get('port'):
             self.config['server']['port'] = kwargs['port']
         
-        if kwargs.get('ws_port'):
-            self.config['websocket']['port'] = kwargs['ws_port']
-        
-        if kwargs.get('host'):
-            self.config['server']['host'] = [kwargs['host']]
-            self.config['websocket']['host'] = kwargs['host']
+
 
 
 class UIProcessManager:
