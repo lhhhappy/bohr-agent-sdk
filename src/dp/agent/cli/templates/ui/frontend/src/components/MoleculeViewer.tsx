@@ -6,15 +6,37 @@ interface MoleculeViewerProps {
   height?: string
 }
 
+interface Atom3D {
+  elem: string
+  x: number
+  y: number
+  z: number
+}
+
+interface Viewer3D {
+  addModel: (data: string, format: string) => void
+  setStyle: (selection: object, style: object) => void
+  getModel: () => { selectedAtoms: (selection: object) => Atom3D[] }
+  addLabel: (text: string, options: object) => void
+  removeAllLabels: () => void
+  zoomTo: () => void
+  zoom: (factor: number) => void
+  render: () => void
+  clear: () => void
+  pngURI: () => string
+}
+
 declare global {
   interface Window {
-    $3Dmol: any
+    $3Dmol: {
+      createViewer: (element: HTMLElement, options: object) => Viewer3D
+    }
   }
 }
 
 const MoleculeViewer: React.FC<MoleculeViewerProps> = ({ content, height = '500px' }) => {
   const viewerRef = useRef<HTMLDivElement>(null)
-  const viewerInstanceRef = useRef<any>(null)
+  const viewerInstanceRef = useRef<Viewer3D | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [zoom, setZoom] = useState(100)
   const [showLabels, setShowLabels] = useState(true)
@@ -56,7 +78,7 @@ const MoleculeViewer: React.FC<MoleculeViewerProps> = ({ content, height = '500p
       
       // 添加元素标签
       const atoms = viewer.getModel().selectedAtoms({})
-      atoms.forEach((atom: any) => {
+      atoms.forEach((atom: Atom3D) => {
         viewer.addLabel(atom.elem, {
           position: { x: atom.x, y: atom.y, z: atom.z },
           backgroundColor: 'rgba(255, 255, 255, 0.8)',
@@ -91,7 +113,7 @@ const MoleculeViewer: React.FC<MoleculeViewerProps> = ({ content, height = '500p
     }
 
     script.onerror = () => {
-      console.error('Failed to load 3Dmol.js')
+      // console.error('Failed to load 3Dmol.js')
       setIsLoading(false)
     }
     
@@ -103,7 +125,7 @@ const MoleculeViewer: React.FC<MoleculeViewerProps> = ({ content, height = '500p
         script.parentNode.removeChild(script)
       }
       if (viewerInstanceRef.current) {
-        viewerInstanceRef.current.clear()
+        viewerInstanceRef.current?.clear()
       }
     }
   }, [content])
@@ -136,8 +158,8 @@ const MoleculeViewer: React.FC<MoleculeViewerProps> = ({ content, height = '500p
     
     if (show) {
       const atoms = viewerInstanceRef.current.getModel().selectedAtoms({})
-      atoms.forEach((atom: any) => {
-        viewerInstanceRef.current.addLabel(atom.elem, {
+      atoms.forEach((atom: Atom3D) => {
+        viewerInstanceRef.current?.addLabel(atom.elem, {
           position: { x: atom.x, y: atom.y, z: atom.z },
           backgroundColor: 'rgba(255, 255, 255, 0.8)',
           backgroundOpacity: 0.8,

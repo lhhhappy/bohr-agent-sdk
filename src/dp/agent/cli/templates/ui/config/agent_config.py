@@ -34,6 +34,9 @@ class AgentConfig:
     
     def _get_default_config(self) -> Dict[str, Any]:
         """Provide default configuration for Agent"""
+        # 使用环境变量提供的端口，如果没有则使用默认值
+        default_port = int(os.environ.get('AGENT_SERVER_PORT', '50002'))
+        
         return {
             "agent": {
                 "name": "My Agent",
@@ -52,9 +55,9 @@ class AgentConfig:
             "files": {
                 "watchDirectories": ["./output"]
             },
-            "websocket": {
-                "host": "localhost",
-                "port": 8000
+            "server": {
+                "host": ["localhost", "127.0.0.1"],
+                "port": default_port
             }
         }
     
@@ -113,8 +116,12 @@ class AgentConfig:
         # 合并默认主机和用户定义的额外主机
         all_hosts = list(set(default_hosts + user_hosts))  # 使用 set 去重
         
+        # 使用环境变量或配置的端口，最后使用默认端口
+        default_port = int(os.environ.get('AGENT_SERVER_PORT', '50002'))
+        port = server_config.get("port", default_port)
+        
         return {
-            "port": server_config.get("port", 50002),
+            "port": port,
             "allowedHosts": all_hosts
         }
 

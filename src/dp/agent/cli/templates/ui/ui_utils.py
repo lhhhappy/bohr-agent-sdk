@@ -24,7 +24,7 @@ class UIConfigManager:
             "title": "DP Agent Assistant"
         },
         "server": {
-            "port": 50002,
+            "port": int(os.environ.get('AGENT_SERVER_PORT', '50002')),
             "host": ["localhost", "127.0.0.1"]
         }
     }
@@ -96,7 +96,7 @@ class UIProcessManager:
     def start_websocket_server(self):
         """启动 WebSocket 服务器"""
         # 统一使用 server.port
-        server_port = self.config.get('server', {}).get('port', 8000)
+        server_port = self.config.get('server', {}).get('port', int(os.environ.get('AGENT_SERVER_PORT', '50002')))
         
         websocket_script = self.ui_dir / "websocket-server.py"
         if not websocket_script.exists():
@@ -137,7 +137,7 @@ class UIProcessManager:
     
     def start_frontend_server(self, dev_mode: bool = True):
         """启动前端服务器"""
-        server_port = self.config.get('server', {}).get('port', 8000)
+        server_port = self.config.get('server', {}).get('port', int(os.environ.get('AGENT_SERVER_PORT', '50002')))
         
         ui_path = self.ui_dir / "frontend"
         if not ui_path.exists():
@@ -147,7 +147,7 @@ class UIProcessManager:
         dist_path = ui_path / "ui-static"
         if dist_path.exists() and not dev_mode:
             # 生产模式：静态文件由 WebSocket 服务器提供
-            click.echo(f"✨ Agent UI 已启动: http://localhost:{server_port}")
+            click.echo(f"✨ Agent UI 已启动: http://{os.environ.get('AGENT_HOST', 'localhost')}:{server_port}")
             return None
         
         if not dev_mode and not dist_path.exists():
@@ -162,8 +162,8 @@ class UIProcessManager:
         
         # 设置环境变量
         env = os.environ.copy()
-        # 开发模式下，前端开发服务器使用固定端口3000
-        frontend_dev_port = 3000
+        # 开发模式下，前端开发服务器端口
+        frontend_dev_port = int(os.environ.get('FRONTEND_DEV_PORT', '3000'))
         env['FRONTEND_PORT'] = str(frontend_dev_port)
         # 告诉前端后端服务器在哪个端口
         env['VITE_WS_PORT'] = str(server_port)

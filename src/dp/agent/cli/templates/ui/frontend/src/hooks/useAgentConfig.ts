@@ -18,7 +18,7 @@ export function useAgentConfig() {
           document.title = loadedConfig.ui.title
         }
       } catch (err) {
-        console.error('Failed to load agent config:', err)
+        // console.error('Failed to load agent config:', err)
         setError('Failed to load configuration')
       } finally {
         setLoading(false)

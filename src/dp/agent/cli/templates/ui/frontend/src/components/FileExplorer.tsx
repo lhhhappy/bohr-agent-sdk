@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react'
-import { ChevronRight, File, Folder, FileText, Loader2, X, Copy, Check, Maximize2, Minimize2, Image, Atom } from 'lucide-react'
+import { ChevronRight, File, Folder, FileText, Loader2, X, Copy, Check, Maximize2, Minimize2, Image, Atom, FolderOpen } from 'lucide-react'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import ReactMarkdown from 'react-markdown'
@@ -26,7 +26,7 @@ interface FileExplorerProps {
   onClose: () => void
   fileTree: FileNode[]
   onFileTreeUpdate: (tree: FileNode[]) => void
-  onLoadFileTree: () => void
+  onLoadFileTree: (path?: string) => void
 }
 
 const FileExplorer: React.FC<FileExplorerProps> = ({
@@ -35,6 +35,8 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
   onFileTreeUpdate,
   onLoadFileTree
 }) => {
+  const [customPath, setCustomPath] = useState<string>('')
+  const [isEditingPath, setIsEditingPath] = useState(false)
   const [selectedFileContent, setSelectedFileContent] = useState<string | null>(null)
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null)
   const [loadingFiles, setLoadingFiles] = useState<Set<string>>(new Set())
@@ -96,7 +98,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
         return updateWithChildren(node)
       }))
     } catch (error) {
-      console.error('Error loading directory children:', error)
+      // Error loading directory children
     }
   }
 
@@ -144,8 +146,8 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
           setSelectedFileContent(response.data)
         }
       } catch (error) {
-        console.error('Error loading file:', error)
-        const errorMsg = '加载文件失败: ' + (error as any).message
+        // Error loading file
+        const errorMsg = '加载文件失败: ' + (error as Error).message
         setSelectedFileContent(errorMsg)
       } finally {
         setLoadingFiles(prev => {
@@ -238,14 +240,14 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
           <ReactMarkdown 
             remarkPlugins={[remarkGfm]}
             components={{
-              pre({ node, children, ...props }: any) {
+              pre({ children, ...props }: React.HTMLAttributes<HTMLPreElement>) {
                 return (
                   <pre className="overflow-x-auto bg-gray-900 text-gray-100 p-4 rounded-lg" {...props}>
                     {children}
                   </pre>
                 )
               },
-              code({ node, inline, className, children, ...props }: any) {
+              code({ inline, className, children, ...props }: React.HTMLAttributes<HTMLElement> & { inline?: boolean }) {
                 const match = /language-(\w+)/.exec(className || '')
                 return !inline && match ? (
                   <SyntaxHighlighter
@@ -259,7 +261,6 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
                     wrapLines={true}
                     wrapLongLines={true}
                     showLineNumbers={true}
-                    {...props}
                   >
                     {String(children).replace(/\n$/, '')}
                   </SyntaxHighlighter>
@@ -370,10 +371,17 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
     <div className="h-full bg-white dark:bg-gray-800 flex flex-col">
       {/* Header */}
       <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">输出文件</h3>
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">文件浏览器</h3>
         <div className="flex items-center gap-2">
           <button
-            onClick={onLoadFileTree}
+            onClick={() => setIsEditingPath(!isEditingPath)}
+            className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors"
+            title="自定义路径"
+          >
+            <FolderOpen className="w-4 h-4 text-gray-500" />
+          </button>
+          <button
+            onClick={() => onLoadFileTree(customPath || undefined)}
             className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors"
             title="刷新"
           >
@@ -389,6 +397,36 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Custom Path Input */}
+      {isEditingPath && (
+        <div className="px-4 py-2 border-b border-gray-200 dark:border-gray-700">
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={customPath}
+              onChange={(e) => setCustomPath(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  onLoadFileTree(customPath || undefined)
+                  setIsEditingPath(false)
+                }
+              }}
+              placeholder="输入自定义路径（留空显示所有）"
+              className="flex-1 px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <button
+              onClick={() => {
+                onLoadFileTree(customPath || undefined)
+                setIsEditingPath(false)
+              }}
+              className="px-3 py-1.5 text-sm bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
+            >
+              加载
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Content */}
       <div className="flex-1 flex overflow-hidden">

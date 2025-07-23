@@ -1,8 +1,13 @@
 import { WS_CONFIG } from '../constants/config'
 import { WSMessage, ConnectionStatus } from '../types'
 
-type MessageHandler = (data: any) => void
+type MessageHandler<T = WSMessage> = (data: T) => void
 type EventHandler = () => void
+
+interface QueuedMessage {
+  type: string
+  data: unknown
+}
 
 export class WebSocketService {
   private ws: WebSocket | null = null
@@ -12,7 +17,7 @@ export class WebSocketService {
   private connectionStatus: ConnectionStatus = 'disconnected'
   private reconnectAttempts = 0
   private maxReconnectAttempts = 10
-  private messageQueue: any[] = []
+  private messageQueue: QueuedMessage[] = []
 
   connect() {
     if (this.ws?.readyState === WebSocket.OPEN || this.ws?.readyState === WebSocket.CONNECTING) {
@@ -32,11 +37,11 @@ export class WebSocketService {
     }
     wsUrl += '/ws'
     
-    console.log('Connecting to WebSocket:', wsUrl)
+    // Connecting to WebSocket
     this.ws = new WebSocket(wsUrl)
 
     this.ws.onopen = () => {
-      console.log('WebSocket connected')
+      // WebSocket connected
       this.setConnectionStatus('connected')
       this.reconnectAttempts = 0
       this.flushMessageQueue()
@@ -48,19 +53,19 @@ export class WebSocketService {
         const data = JSON.parse(event.data) as WSMessage
         this.handleMessage(data)
       } catch (error) {
-        console.error('Failed to parse WebSocket message:', error)
+        // Failed to parse WebSocket message
       }
     }
 
     this.ws.onclose = () => {
-      console.log('WebSocket disconnected')
+      // WebSocket disconnected
       this.setConnectionStatus('disconnected')
       this.emit('disconnected')
       this.scheduleReconnect()
     }
 
-    this.ws.onerror = (error) => {
-      console.error('WebSocket error:', error)
+    this.ws.onerror = () => {
+      // WebSocket error occurred
       this.emit('error')
     }
   }
@@ -71,7 +76,7 @@ export class WebSocketService {
 
   private scheduleReconnect() {
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      console.error('Max reconnection attempts reached')
+      // Max reconnection attempts reached
       return
     }
 
@@ -83,7 +88,7 @@ export class WebSocketService {
     this.reconnectAttempts++
     
     this.reconnectTimeout = setTimeout(() => {
-      console.log(`Reconnection attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts}`)
+      // Attempting reconnection
       this.connect()
     }, delay)
   }
@@ -101,20 +106,22 @@ export class WebSocketService {
     this.reconnectAttempts = 0
   }
 
-  send(data: any) {
+  send(data: QueuedMessage | Record<string, unknown>) {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(data))
     } else {
       // Queue message for later delivery
-      this.messageQueue.push(data)
-      console.warn('WebSocket not connected, message queued')
+      this.messageQueue.push(data as QueuedMessage)
+      // WebSocket not connected, message queued
     }
   }
 
   private flushMessageQueue() {
     while (this.messageQueue.length > 0 && this.ws?.readyState === WebSocket.OPEN) {
       const message = this.messageQueue.shift()
-      this.send(message)
+      if (message) {
+        this.send(message)
+      }
     }
   }
 

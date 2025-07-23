@@ -31,7 +31,7 @@ class ConfigService {
       this.notifyListeners()
       return this.config
     } catch (error) {
-      console.error('Failed to load config:', error)
+      // console.error('Failed to load config:', error)
       // Return default config on error
       this.config = this.getDefaultConfig()
       return this.config

@@ -3,8 +3,8 @@ import { Bot, User } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { createCodeComponent } from './EnhancedCodeBlock';
-import { MemoizedMarkdown } from './MemoizedMarkdown';
 import { StreamingText } from './MessageAnimation';
+import { ToolResultDisplay } from './ToolResultDisplay';
 
 interface MessageProps {
   id: string;
@@ -13,6 +13,8 @@ interface MessageProps {
   timestamp: Date;
   isLastMessage?: boolean;
   isStreaming?: boolean;
+  tool_name?: string;
+  tool_status?: string;
 }
 
 export const MemoizedMessage = React.memo<MessageProps>(({
@@ -20,7 +22,9 @@ export const MemoizedMessage = React.memo<MessageProps>(({
   content,
   timestamp,
   isLastMessage = false,
-  isStreaming = false
+  isStreaming = false,
+  tool_name,
+  tool_status
 }) => {
   return (
     <>
@@ -40,19 +44,19 @@ export const MemoizedMessage = React.memo<MessageProps>(({
             ? 'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-gray-700 glass-premium'
             : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-gray-700 glass-premium shadow-depth'
         }`}>
-          {role === 'tool' ? (
-            <div className="prose prose-sm dark:prose-invert max-w-none">
-              <MemoizedMarkdown>
-                {content}
-              </MemoizedMarkdown>
-            </div>
+          {role === 'tool' && tool_name && tool_status ? (
+            <ToolResultDisplay
+              toolName={tool_name}
+              status={tool_status}
+              result={content || undefined}
+            />
           ) : role === 'assistant' ? (
             <div className="prose prose-sm dark:prose-invert max-w-none">
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 components={{
                   code: createCodeComponent(),
-                  a({ node, children, href, ...props }: any) {
+                  a({ children, href, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) {
                     return (
                       <a
                         href={href}
@@ -65,7 +69,7 @@ export const MemoizedMessage = React.memo<MessageProps>(({
                       </a>
                     )
                   },
-                  p({ children }: any) {
+                  p({ children }: React.HTMLAttributes<HTMLParagraphElement>) {
                     if (isLastMessage && isStreaming) {
                       return (
                         <p>

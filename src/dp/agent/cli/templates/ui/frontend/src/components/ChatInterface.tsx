@@ -1,44 +1,17 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
-import { Send, Bot, FileText, Terminal } from 'lucide-react'
+import { Send, Bot, FileText } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import SessionList from './SessionList'
 import FileExplorer from './FileExplorer'
-import { ShellTerminal } from './ShellTerminal'
 import { ResizablePanel } from './ResizablePanel'
 import { useAgentConfig } from '../hooks/useAgentConfig'
 import { MessageAnimation, LoadingDots } from './MessageAnimation'
 import { MemoizedMessage } from './MemoizedMessage'
 import axios from 'axios'
+import { Message, Session, FileNode, WSMessage } from '../types'
 
 const API_BASE_URL = ''  // Use proxy in vite config
 
-interface Message {
-  id: string
-  role: 'user' | 'assistant' | 'tool'
-  content: string
-  timestamp: Date
-  tool_name?: string
-  tool_status?: string
-  isStreaming?: boolean
-}
-
-interface Session {
-  id: string
-  title: string
-  created_at: string
-  last_message_at: string
-  message_count: number
-}
-
-interface FileNode {
-  name: string
-  path: string
-  type: 'file' | 'directory'
-  children?: FileNode[]
-  isExpanded?: boolean
-  size?: number
-  modified?: string
-}
 
 const ChatInterface: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([])
@@ -49,9 +22,7 @@ const ChatInterface: React.FC = () => {
   const [showLoadingDelay, setShowLoadingDelay] = useState(false)
   const [isCreatingSession, setIsCreatingSession] = useState(false)
   const [fileTree, setFileTree] = useState<FileNode[]>([])
-  const [showFileExplorer, setShowFileExplorer] = useState(false)
-  const [showShellTerminal, setShowShellTerminal] = useState(false)
-  const [shellOutput, setShellOutput] = useState<Array<{ type: 'command' | 'output' | 'error'; content: string; timestamp: Date }>>([]) 
+  const [showFileExplorer, setShowFileExplorer] = useState(true) 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const messageIdef = useRef<Set<string>>(new Set())
@@ -88,10 +59,11 @@ const ChatInterface: React.FC = () => {
   const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected')
 
   // Define loadFileTree before using it
-  const loadFileTree = useCallback(async () => {
+  const loadFileTree = useCallback(async (customPath?: string) => {
     try {
-      // Get file tree for all watched directories
-      const response = await axios.get(`${API_BASE_URL}/api/files/tree`)
+      // Get file tree for specified path or all watched directories
+      const params = customPath ? { path: customPath } : {}
+      const response = await axios.get(`${API_BASE_URL}/api/files/tree`, { params })
       let files = response.data
       
       if (!files || files.length === 0) {
@@ -100,15 +72,15 @@ const ChatInterface: React.FC = () => {
       }
       
       // Ensure all root directories are expanded
-      files.forEach((node: any) => {
+      files.forEach((node: FileNode) => {
         if (node.type === 'directory') {
           node.isExpanded = true
         }
       })
       
       setFileTree(files)
-    } catch (error) {
-      console.error('Error loading file tree:', error)
+    } catch (_error) {
+      // Error loading file tree
       setFileTree([])
     }
   }, [])
@@ -141,12 +113,12 @@ const ChatInterface: React.FC = () => {
       }
       wsUrl += '/ws'
       
-      console.log('Connecting to WebSocket:', wsUrl)
+      // Connecting to WebSocket
       const websocket = new WebSocket(wsUrl)
       currentWebSocket = websocket
       
       websocket.onopen = () => {
-        console.log('WebSocket connected')
+        // WebSocket connected
         setConnectionStatus('connected')
         setWs(websocket)
       }
@@ -154,15 +126,15 @@ const ChatInterface: React.FC = () => {
       websocket.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data)
-          console.log('Received WebSocket message:', data)
+          // Received WebSocket message
           handleWebSocketMessage(data)
-        } catch (error) {
-          console.error('WebSocket message error:', error)
+        } catch (_error) {
+          // WebSocket message error
         }
       }
       
-      websocket.onerror = (error) => {
-        console.error('WebSocket error:', error)
+      websocket.onerror = (_error) => {
+        // WebSocket error
         setConnectionStatus('disconnected')
       }
       
@@ -274,8 +246,8 @@ const ChatInterface: React.FC = () => {
     }
   }
 
-  const handleWebSocketMessage = useCallback((data: any) => {
-    const { type, content, timestamp, id } = data
+  const handleWebSocketMessage = useCallback((data: WSMessage) => {
+    const { type, timestamp, id } = data
     
     // 如果消息有ID，检查是否已经处理过
     if (id && messageIdef.current.has(id)) {
@@ -285,36 +257,18 @@ const ChatInterface: React.FC = () => {
       messageIdef.current.add(id)
     }
     
-    // Handle shell command responses
-    if (type === 'shell_output') {
-      setShellOutput(prev => [...prev, {
-        type: 'output',
-        content: data.output || '',
-        timestamp: new Date()
-      }])
-      return
-    }
     
-    if (type === 'shell_error') {
-      setShellOutput(prev => [...prev, {
-        type: 'error',
-        content: data.error || 'Command execution error',
-        timestamp: new Date()
-      }])
-      return
-    }
-    
-    if (type === 'sessions_list') {
+    if (type === 'sessions_list' && 'sessions' in data && 'current_session_id' in data) {
       // 更新会话列表
-      setSessions(data.sessions || [])
-      setCurrentSessionId(data.current_session_id)
+      setSessions((data as any).sessions || [])
+      setCurrentSessionId((data as any).current_session_id)
       setIsCreatingSession(false)
       return
     }
     
-    if (type === 'session_messages') {
+    if (type === 'session_messages' && 'messages' in data) {
       // 加载会话历史消息
-      const messages = data.messages || []
+      const messages = (data as any).messages || []
       setMessages(messages.map((msg: any) => ({
         ...msg,
         timestamp: new Date(msg.timestamp)
@@ -335,27 +289,18 @@ const ChatInterface: React.FC = () => {
       return
     }
     
-    if (type === 'tool') {
+    if (type === 'tool' && 'tool_name' in data && 'status' in data) {
       // Tool execution status
-      const { tool_name, status, is_long_running, result } = data
-      let content = ''
+      const { tool_name, status } = data
+      const result = 'result' in data ? (data as any).result : undefined
+      // 对于工具消息，我们传递原始结果，让 ToolResultDisplay 组件处理展示
+      const content = result || ''
       
-      if (status === 'executing') {
-        const icon = is_long_running ? '⏳' : '🔧'
-        content = `${icon} 正在执行工具: **${tool_name}**${is_long_running ? ' (长时间运行)' : ''}`
-      } else if (status === 'completed') {
-        if (result) {
-          // 保留原始格式，包括换行符
-          content = `✅ 工具执行完成: **${tool_name}**\n\`\`\`json\n${result}\n\`\`\``
-        } else {
-          content = `✅ 工具执行完成: **${tool_name}**`
-        }
-      } else {
-        content = `📊 工具状态更新: **${tool_name}** - ${status}`
-      }
+      // 使用基于工具名称和会话的唯一ID，这样同一工具的状态更新会替换而不是新增
+      const toolId = `tool-${currentSessionId}-${tool_name}`
       
       const toolMessage: Message = {
-        id: id || `tool-${Date.now()}`,
+        id: toolId,
         role: 'tool' as const,
         content,
         timestamp: new Date(timestamp || Date.now()),
@@ -363,13 +308,18 @@ const ChatInterface: React.FC = () => {
         tool_status: status
       }
       
-      // 使用函数式更新来避免消息重复
+      // 使用函数式更新，检查是否需要更新现有的工具消息
       setMessages(prev => {
-        // 检查是否已经存在相同ID的消息
-        if (prev.some(m => m.id === toolMessage.id)) {
-          return prev
+        const existingIndex = prev.findIndex(m => m.id === toolId)
+        if (existingIndex >= 0) {
+          // 更新现有消息
+          const updated = [...prev]
+          updated[existingIndex] = toolMessage
+          return updated
+        } else {
+          // 添加新消息
+          return [...prev, toolMessage]
         }
-        return [...prev, toolMessage]
       })
       // 工具消息后滚动到底部
       scrollToBottom()
@@ -380,7 +330,7 @@ const ChatInterface: React.FC = () => {
       const assistantMessage: Message = {
         id: id || `assistant-${Date.now()}`,
         role: 'assistant',
-        content: content || '',
+        content: 'content' in data ? (data as any).content || '' : '',
         timestamp: new Date(timestamp || Date.now())
       }
       
@@ -406,7 +356,7 @@ const ChatInterface: React.FC = () => {
       const errorMessage: Message = {
         id: `error-${Date.now()}`,
         role: 'assistant',
-        content: `❌ 错误: ${content}`,
+        content: `❌ 错误: ${'content' in data ? (data as any).content : '未知错误'}`,
         timestamp: new Date()
       }
       setMessages(prev => [...prev, errorMessage])
@@ -415,8 +365,7 @@ const ChatInterface: React.FC = () => {
     
     if (type === 'file_change') {
       // Handle file change notification
-      const { event_type, relative_path, watch_directory } = data
-      console.log(`File ${event_type}: ${relative_path} in ${watch_directory}`)
+      // File change detected
       
       // Automatically refresh the file tree when files change
       loadFileTree()
@@ -454,13 +403,6 @@ const ChatInterface: React.FC = () => {
             </h1>
           </div>
           <div className="flex items-center gap-3">
-            <button
-              onClick={() => setShowShellTerminal(!showShellTerminal)}
-              className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors btn-animated"
-            >
-              <Terminal className="w-4 h-4" />
-              {showShellTerminal ? '隐藏终端' : '显示终端'}
-            </button>
             <button
               onClick={() => setShowFileExplorer(!showFileExplorer)}
               className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors btn-animated"
@@ -525,6 +467,8 @@ const ChatInterface: React.FC = () => {
                       timestamp={message.timestamp}
                       isLastMessage={index === messages.length - 1}
                       isStreaming={message.isStreaming}
+                      tool_name={message.tool_name}
+                      tool_status={message.tool_status}
                     />
                   </motion.div>
                 ))}
@@ -611,40 +555,6 @@ const ChatInterface: React.FC = () => {
           </ResizablePanel>
         )}
       </div>
-      
-      {/* Shell Terminal */}
-      <ShellTerminal
-        isOpen={showShellTerminal}
-        onClose={() => setShowShellTerminal(false)}
-        onExecuteCommand={(command) => {
-          if (command === '__clear__') {
-            setShellOutput([])
-            return
-          }
-          
-          // Add command to output
-          setShellOutput(prev => [...prev, {
-            type: 'command',
-            content: command,
-            timestamp: new Date()
-          }])
-          
-          // Send command to server
-          if (ws && connectionStatus === 'connected') {
-            ws.send(JSON.stringify({
-              type: 'shell_command',
-              command: command
-            }))
-          } else {
-            setShellOutput(prev => [...prev, {
-              type: 'error',
-              content: 'Not connected to server',
-              timestamp: new Date()
-            }])
-          }
-        }}
-        output={shellOutput}
-      />
     </div>
   )
 }

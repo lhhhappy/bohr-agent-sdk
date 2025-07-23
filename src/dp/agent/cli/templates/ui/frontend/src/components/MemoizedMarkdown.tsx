@@ -15,7 +15,7 @@ export const MemoizedMarkdown = React.memo<MemoizedMarkdownProps>(({ children, c
       remarkPlugins={[remarkGfm]}
       components={{
         code: createCodeComponent(),
-        a({ node, children, href, ...props }: any) {
+        a({ children, href, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) {
           return (
             <a
               href={href}
@@ -28,7 +28,7 @@ export const MemoizedMarkdown = React.memo<MemoizedMarkdownProps>(({ children, c
             </a>
           );
         },
-        p({ children }: any) {
+        p({ children }: React.HTMLAttributes<HTMLParagraphElement>) {
           return <p>{children}</p>;
         }
       }}

@@ -66,6 +66,9 @@ dp-agent run agent --config <配置文件路径>
     "port": 50002,
     "host": ["localhost", "127.0.0.1"]
   },
+    "files": {
+    "watchDirectories": ["./output", "./data", "./examples"] #展示文件目录
+    }
 }
 ```
 

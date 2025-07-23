@@ -22,7 +22,7 @@ apiClient.interceptors.request.use(
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
-    console.error('API Error:', error)
+    // console.error('API Error:', error)
     return Promise.reject(error)
   }
 )
@@ -72,7 +72,7 @@ export class WSClient {
     this.ws = new WebSocket(wsUrl)
 
     this.ws.onopen = () => {
-      console.log('WebSocket connected')
+      // console.log('WebSocket connected')
       this.emit('connected')
     }
 
@@ -81,18 +81,18 @@ export class WSClient {
         const data = JSON.parse(event.data)
         this.emit(data.type, data)
       } catch (error) {
-        console.error('Failed to parse WebSocket message:', error)
+        // console.error('Failed to parse WebSocket message:', error)
       }
     }
 
     this.ws.onclose = () => {
-      console.log('WebSocket disconnected')
+      // console.log('WebSocket disconnected')
       this.emit('disconnected')
       this.reconnect()
     }
 
     this.ws.onerror = (error) => {
-      console.error('WebSocket error:', error)
+      // console.error('WebSocket error:', error)
       this.emit('error', error)
     }
   }
@@ -103,7 +103,7 @@ export class WSClient {
     }
 
     this.reconnectTimeout = setTimeout(() => {
-      console.log('Attempting to reconnect WebSocket...')
+      // console.log('Attempting to reconnect WebSocket...')
       this.connect()
     }, WS_CONFIG.RECONNECT_DELAY)
   }
@@ -122,7 +122,7 @@ export class WSClient {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(data))
     } else {
-      console.warn('WebSocket is not connected')
+      // console.warn('WebSocket is not connected')
     }
   }
 

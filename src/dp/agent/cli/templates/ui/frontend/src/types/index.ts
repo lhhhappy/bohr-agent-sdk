@@ -63,13 +63,79 @@ export interface AgentConfig {
 }
 
 // WebSocket Message Types
-export interface WSMessage {
+
+// 基础消息接口
+interface BaseWSMessage {
   type: string
-  content?: string
   timestamp?: string
   id?: string
-  [key: string]: any
 }
+
+// 具体的消息类型定义
+export interface SessionCreatedMessage extends BaseWSMessage {
+  type: 'session_created'
+  session_id: string
+}
+
+export interface MessageMessage extends BaseWSMessage {
+  type: 'message'
+  message: Message
+}
+
+export interface FileChangeMessage extends BaseWSMessage {
+  type: 'file_change'
+  event_type: string
+  relative_path: string
+  watch_directory: string
+}
+
+export interface ErrorMessage extends BaseWSMessage {
+  type: 'error'
+  error: string
+}
+
+export interface StatusMessage extends BaseWSMessage {
+  type: 'status'
+  status: string
+}
+
+export interface ContentMessage extends BaseWSMessage {
+  type: string
+  content: string
+}
+
+// 其他消息类型
+export interface SessionsMessage extends BaseWSMessage {
+  type: 'sessions'
+  sessions: Session[]
+  current_session_id?: string
+}
+
+export interface MessagesMessage extends BaseWSMessage {
+  type: 'messages'
+  messages: any[]
+}
+
+export interface ToolMessage extends BaseWSMessage {
+  type: 'tool'
+  tool_name: string
+  status: string
+  is_long_running?: boolean
+  result?: string
+}
+
+// 联合类型，包含所有可能的消息类型
+export type WSMessage = 
+  | SessionCreatedMessage 
+  | MessageMessage 
+  | FileChangeMessage 
+  | ErrorMessage 
+  | StatusMessage
+  | ContentMessage
+  | SessionsMessage
+  | MessagesMessage
+  | ToolMessage
+  | BaseWSMessage  // 兜底类型，用于未知的消息类型
 
 // Connection Status
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected'

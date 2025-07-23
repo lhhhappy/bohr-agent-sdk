@@ -27,7 +27,7 @@ export const EnhancedCodeBlock: React.FC<EnhancedCodeBlockProps> = React.memo(({
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
-      console.error('Failed to copy:', err);
+      // console.error('Failed to copy:', err);
     }
   };
 
@@ -112,7 +112,7 @@ export const EnhancedCodeBlock: React.FC<EnhancedCodeBlockProps> = React.memo(({
 
 // 用于替换Markdown中的代码块
 export const createCodeComponent = () => {
-  return React.memo(({ inline, className, children }: any) => {
+  return React.memo(({ inline, className, children }: React.HTMLAttributes<HTMLElement> & { inline?: boolean }) => {
     const match = /language-(\w+)/.exec(className || '');
     const language = match ? match[1] : 'text';
     
