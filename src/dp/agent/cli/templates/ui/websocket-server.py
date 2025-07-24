@@ -23,6 +23,7 @@ import logging
 from pathlib import Path
 from typing import Optional, Dict, List
 from datetime import datetime
+import time
 from dataclasses import dataclass, field, asdict
 import uuid
 import subprocess
@@ -567,14 +568,18 @@ class SessionManager:
                                 hasattr(function_call, 'id')):
                                 is_long_running = function_call.id in event.long_running_tool_ids
                             
-                            await self.send_to_connection(context, {
+                            tool_executing_msg = {
                                 "type": "tool",
                                 "tool_name": tool_name,
                                 "status": "executing",
                                 "is_long_running": is_long_running,
                                 "timestamp": datetime.now().isoformat()
-                            })
+                            }
+                            logger.info(f"Sending tool executing status: {tool_executing_msg}")
+                            await self.send_to_connection(context, tool_executing_msg)
                             logger.info(f"Tool call detected: {tool_name} (long_running: {is_long_running})")
+                            # 给前端一点时间来处理和显示执行状态
+                            await asyncio.sleep(0.1)
                         
                         # 检查是否是函数响应（工具完成）
                         elif hasattr(part, 'function_response') and part.function_response:
@@ -619,13 +624,15 @@ class SessionManager:
                                     # 其他类型转换为字符串
                                     result_str = str(response_data)
                                 
-                                await self.send_to_connection(context, {
+                                tool_completed_msg = {
                                     "type": "tool",
                                     "tool_name": tool_name,
                                     "status": "completed",
                                     "result": result_str,
                                     "timestamp": datetime.now().isoformat()
-                                })
+                                }
+                                logger.info(f"Sending tool completed status: {tool_name}")
+                                await self.send_to_connection(context, tool_completed_msg)
                             else:
                                 # 没有结果的情况
                                 await self.send_to_connection(context, {

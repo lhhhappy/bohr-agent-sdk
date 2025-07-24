@@ -15,13 +15,13 @@ pip install bohr-agent-sdk --upgrade
 ### 方式二：从 GitHub 安装最新版本
 
 ```bash
-pip install git+https://github.com/lhhhappy/bohr-agent-sdk.git@main #目前
+pip install git+https://github.com/dptech-corp/bohr-agent-sdk.git #目前
 ```
 
 ### 方式三：从源码安装（开发者）
 
 ```bash
-git clone https://github.com/lhhhappy/bohr-agent-sdk.git
+git clone https://github.com/dptech-corp/bohr-agent-sdk.git
 cd bohr-agent-sdk
 pip install -e .
 ```
@@ -67,7 +67,7 @@ dp-agent run agent --config <配置文件路径>
     "host": ["localhost", "127.0.0.1"]
   },
     "files": {
-    "watchDirectories": ["./output", "./data", "./examples"] #展示文件目录
+    "watchDirectories": ["./output"] #展示文件目录
     }
 }
 ```
@@ -92,6 +92,7 @@ dp-agent run agent --config <配置文件路径>
 
 - **title** (string): 浏览器标签页标题
   - 默认值: "DP Agent Assistant"
+
 #### server 部分（可选）
 
 - **port** (number): HTTP 服务器端口
@@ -100,6 +101,11 @@ dp-agent run agent --config <配置文件路径>
 - **host** (array/string): 允许访问的主机地址
   - 默认值: ["localhost", "127.0.0.1"]
   - 可以添加其他 IP 地址或域名以允许远程访问
+
+#### files 部分
+
+- **watchDirectories** 监控文件系统
+  - 默认值: ["./output"]
 
 
 ## UI 功能特性
@@ -191,4 +197,4 @@ pip show bohr-agent-sdk
 ## 相关文档
 
 - [开发者指南](src/dp/agent/cli/templates/ui/DEVELOPER.md) - 如何开发和更新 UI
-- [项目主页](https://github.com/lhhhappy/bohr-agent-sdk)
+- [项目主页](https://github.com/dptech-corp/bohr-agent-sdk)

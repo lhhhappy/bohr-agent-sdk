@@ -114,7 +114,8 @@ class UIProcessManager:
             env['PYTHONPATH'] = str(Path.cwd())
         
         # 静默启动，将输出重定向到日志文件
-        log_file = open(Path.cwd() / "websocket.log", "a")
+        # 使用 'w' 模式清空旧日志
+        log_file = open(Path.cwd() / "websocket.log", "w")
         process = subprocess.Popen(
             [sys.executable, str(websocket_script)],
             cwd=str(Path.cwd()),  # 在用户工作目录运行

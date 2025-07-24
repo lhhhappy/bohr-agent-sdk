@@ -110,7 +110,9 @@ export const MemoizedMessage = React.memo<MessageProps>(({
   return prevProps.id === nextProps.id &&
          prevProps.content === nextProps.content &&
          prevProps.isStreaming === nextProps.isStreaming &&
-         prevProps.isLastMessage === nextProps.isLastMessage;
+         prevProps.isLastMessage === nextProps.isLastMessage &&
+         prevProps.tool_name === nextProps.tool_name &&
+         prevProps.tool_status === nextProps.tool_status;
 });
 
 MemoizedMessage.displayName = 'MemoizedMessage';

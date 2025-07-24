@@ -49,7 +49,7 @@ ui/
 
 ```bash
 # 直接通过 pip 安装即可，已包含预构建的静态文件
-pip install git+https://github.com/lhhhappy/bohr-agent-sdk.git@main #目前
+pip install git+https://github.com/dptech-corp/bohr-agent-sdk.git
 ```
 
 ### 2. 使用 UI
@@ -143,7 +143,7 @@ socket.on('my_new_event', (data) => {
 
 ```bash
 # 克隆项目
-git clone https://github.com/lhhhappy/bohr-agent-sdk.git
+git clone https://github.com/dptech-corp/bohr-agent-sdk.git
 cd bohr-agent-sdk
 
 # 安装开发依赖
