@@ -15,7 +15,7 @@ interface JsonNodeProps {
 }
 
 const JsonNode: React.FC<JsonNodeProps> = ({ keyName, value, depth = 0, isLast = true }) => {
-  const [isExpanded, setIsExpanded] = useState(depth < 2); // 默认展开前两层
+  const [isExpanded, setIsExpanded] = useState(depth < 5); // 默认展开前五层
   const [copied, setCopied] = useState(false);
 
   const isObject = value !== null && typeof value === 'object';
