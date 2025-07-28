@@ -27,10 +27,16 @@ import time
 from dataclasses import dataclass, field
 import uuid
 from http.cookies import SimpleCookie
+import contextvars
+from contextlib import contextmanager
+import threading
+import hashlib
+import aiofiles
+import shutil
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 import uvicorn
@@ -48,16 +54,33 @@ from google.genai import types
 # Import configuration
 from config.agent_config import agentconfig
 
-# Get agent from configuration
-try:
-    rootagent = agentconfig.get_agent()
-    print(f"✅ 成功加载 agent: {agentconfig.config['agent']['module']}")
-except Exception as e:
-    print(f"❌ 加载 agent 失败: {e}")
-    print(f"📂 当前工作目录: {os.getcwd()}")
-    print(f"🐍 Python 路径: {sys.path}")
-    print(f"📋 配置内容: {agentconfig.config}")
-    raise
+# 创建上下文变量用于管理AK
+current_access_key = contextvars.ContextVar('access_key', default=None)
+
+# 环境变量锁（用于兼容必须使用环境变量的代码）
+env_lock = threading.Lock()
+
+@contextmanager
+def temporary_env_var(key: str, value: Optional[str]):
+    """线程安全的临时环境变量设置"""
+    with env_lock:
+        original = os.environ.get(key)
+        try:
+            if value is not None:
+                os.environ[key] = value
+            elif key in os.environ:
+                del os.environ[key]
+            yield
+        finally:
+            if original is not None:
+                os.environ[key] = original
+            elif key in os.environ:
+                del os.environ[key]
+
+# 不再在启动时创建 agent
+# 每个用户连接时会根据他们的 AK 创建独立的 agent
+print(f"📂 Agent 配置: {agentconfig.config['agent']['module']}")
+print("🛠️  Agent 将在用户连接时根据其 AK 动态创建")
 
 # 配置日志
 # 检查是否已经有 handler，避免重复添加
@@ -338,11 +361,154 @@ def get_ak_info_from_request(headers) -> Tuple[str, str]:
         return access_key, app_key
     return "", ""
 
+
+class PersistentSessionManager:
+    """持久化会话管理器，用于保存和恢复用户会话"""
+    
+    def __init__(self, base_dir: str):
+        self.base_dir = Path(base_dir)
+        self.sessions_dir = self.base_dir / ".agent_sessions"
+        self.ak_sessions_dir = self.sessions_dir / "ak_sessions"
+        self.ak_sessions_dir.mkdir(parents=True, exist_ok=True)
+    
+    def _get_ak_hash(self, access_key: str) -> str:
+        """生成AK的安全哈希值"""
+        return hashlib.sha256(access_key.encode()).hexdigest()[:16]
+    
+    async def load_user_sessions(self, access_key: str) -> Dict[str, Session]:
+        """加载用户的历史会话"""
+        if not access_key:
+            return {}  # 临时用户，不加载历史
+        
+        ak_hash = self._get_ak_hash(access_key)
+        user_dir = self.ak_sessions_dir / ak_hash / "sessions"
+        
+        if not user_dir.exists():
+            return {}
+        
+        sessions = {}
+        for session_file in user_dir.glob("*.json"):
+            try:
+                async with aiofiles.open(session_file, 'r', encoding='utf-8') as f:
+                    data = json.loads(await f.read())
+                    session = self._deserialize_session(data)
+                    sessions[session.id] = session
+            except Exception as e:
+                logger.error(f"加载会话失败 {session_file}: {e}")
+        
+        return sessions
+    
+    async def save_session(self, access_key: str, session: Session):
+        """保存单个会话"""
+        if not access_key:
+            return  # 临时用户不保存
+        
+        ak_hash = self._get_ak_hash(access_key)
+        user_sessions_dir = self.ak_sessions_dir / ak_hash / "sessions"
+        user_sessions_dir.mkdir(parents=True, exist_ok=True)
+        
+        # 保存元信息（首次）
+        metadata_file = self.ak_sessions_dir / ak_hash / "metadata.json"
+        if not metadata_file.exists():
+            metadata = {
+                "ak_hash": ak_hash,
+                "first_seen": datetime.now().isoformat(),
+                "last_seen": datetime.now().isoformat()
+            }
+            async with aiofiles.open(metadata_file, 'w', encoding='utf-8') as f:
+                await f.write(json.dumps(metadata, indent=2, ensure_ascii=False))
+        else:
+            # 更新最后访问时间
+            try:
+                async with aiofiles.open(metadata_file, 'r', encoding='utf-8') as f:
+                    metadata = json.loads(await f.read())
+                metadata["last_seen"] = datetime.now().isoformat()
+                async with aiofiles.open(metadata_file, 'w', encoding='utf-8') as f:
+                    await f.write(json.dumps(metadata, indent=2, ensure_ascii=False))
+            except Exception as e:
+                logger.error(f"更新元信息失败: {e}")
+        
+        # 保存会话
+        session_file = user_sessions_dir / f"{session.id}.json"
+        try:
+            async with aiofiles.open(session_file, 'w', encoding='utf-8') as f:
+                await f.write(json.dumps(self._serialize_session(session), indent=2, ensure_ascii=False))
+            logger.info(f"保存会话成功: {session.id}")
+        except Exception as e:
+            logger.error(f"保存会话失败 {session.id}: {e}")
+    
+    async def delete_session(self, access_key: str, session_id: str) -> bool:
+        """删除指定会话的持久化文件"""
+        if not access_key:
+            return True
+        
+        ak_hash = self._get_ak_hash(access_key)
+        session_file = self.ak_sessions_dir / ak_hash / "sessions" / f"{session_id}.json"
+        
+        if session_file.exists():
+            try:
+                session_file.unlink()
+                logger.info(f"删除持久化会话文件: {session_id}")
+                return True
+            except Exception as e:
+                logger.error(f"删除会话文件失败: {e}")
+                return False
+        return True
+    
+    def _serialize_session(self, session: Session) -> dict:
+        """序列化会话对象"""
+        return {
+            "id": session.id,
+            "title": session.title,
+            "created_at": session.created_at.isoformat(),
+            "last_message_at": session.last_message_at.isoformat(),
+            "messages": [
+                {
+                    "id": msg.id,
+                    "role": msg.role,
+                    "content": msg.content,
+                    "timestamp": msg.timestamp.isoformat(),
+                    "tool_name": msg.tool_name,
+                    "tool_status": msg.tool_status
+                }
+                for msg in session.messages
+            ]
+        }
+    
+    def _deserialize_session(self, data: dict) -> Session:
+        """反序列化会话对象"""
+        session = Session(
+            id=data["id"],
+            title=data["title"],
+            created_at=datetime.fromisoformat(data["created_at"]),
+            last_message_at=datetime.fromisoformat(data["last_message_at"])
+        )
+        
+        for msg_data in data["messages"]:
+            message = Message(
+                id=msg_data["id"],
+                role=msg_data["role"],
+                content=msg_data["content"],
+                timestamp=datetime.fromisoformat(msg_data["timestamp"]),
+                tool_name=msg_data.get("tool_name"),
+                tool_status=msg_data.get("tool_status")
+            )
+            session.messages.append(message)
+        
+        return session
+
+# 移除不需要的函数，因为我们在 _init_session_runner 中直接处理
+
 class SessionManager:
     def __init__(self):
         self.active_connections: Dict[WebSocket, ConnectionContext] = {}
         # Use configuration values
         self.app_name = agentconfig.config.get("agent", {}).get("name", "Agent")
+        
+        # 初始化持久化管理器
+        user_working_dir = os.environ.get('USER_WORKING_DIR', os.getcwd())
+        self.persistent_manager = PersistentSessionManager(user_working_dir)
+        logger.info(f"持久化管理器初始化，基础目录: {user_working_dir}")
         
     async def create_session(self, context: ConnectionContext) -> Session:
         """创建新会话"""
@@ -370,18 +536,24 @@ class SessionManager:
     async def _init_session_runner(self, context: ConnectionContext, session_id: str):
         """异步初始化会话的runner"""
         try:
-            session_service = InMemorySessionService()
-            await session_service.create_session(
-                app_name=self.app_name,
-                user_id=context.user_id,
-                session_id=session_id
-            )
-            
-            runner = Runner(
-                agent=rootagent,
-                session_service=session_service,
-                app_name=self.app_name
-            )
+            # 使用用户的 AK 创建 agent 和 runner
+            with temporary_env_var("AK", context.access_key):
+                # 每次都重新获取 agent，以便使用正确的 AK
+                user_agent = agentconfig.get_agent()
+                logger.info(f"为用户创建 Runner，AK: {context.access_key[:8] if context.access_key else 'None'}...")
+                
+                session_service = InMemorySessionService()
+                await session_service.create_session(
+                    app_name=self.app_name,
+                    user_id=context.user_id,
+                    session_id=session_id
+                )
+                
+                runner = Runner(
+                    agent=user_agent,
+                    session_service=session_service,
+                    app_name=self.app_name
+                )
             
             context.session_services[session_id] = session_service
             context.runners[session_id] = runner
@@ -406,14 +578,20 @@ class SessionManager:
         """获取连接的所有会话列表"""
         return list(context.sessions.values())
     
-    def delete_session(self, context: ConnectionContext, session_id: str) -> bool:
+    async def delete_session(self, context: ConnectionContext, session_id: str) -> bool:
         """删除会话"""
         if session_id in context.sessions:
+            # 先从内存中删除
             del context.sessions[session_id]
             if session_id in context.runners:
                 del context.runners[session_id]
             if session_id in context.session_services:
                 del context.session_services[session_id]
+            
+            # 如果有AK，同时删除持久化文件
+            if context.access_key:
+                await self.persistent_manager.delete_session(context.access_key, session_id)
+            
             logger.info(f"用户 {context.user_id} 删除会话: {session_id}")
             return True
         return False
@@ -434,20 +612,72 @@ class SessionManager:
         context = ConnectionContext(websocket, access_key)
         self.active_connections[websocket] = context
         
-        logger.info(f"新用户连接: {context.user_id}, AK: {access_key[:8]}..." if access_key else f"新用户连接: {context.user_id}")
-        
-        # 创建默认会话
-        session = await self.create_session(context)
-        context.current_session_id = session.id
+        # 加载历史会话（如果有AK）
+        if access_key:
+            logger.info(f"有AK用户连接: {context.user_id}, AK: {access_key[:8]}...")
+            logger.info("正在加载历史会话...")
             
+            try:
+                historical_sessions = await self.persistent_manager.load_user_sessions(access_key)
+                
+                if historical_sessions:
+                    # 恢复历史会话
+                    context.sessions = historical_sessions
+                    
+                    # 选择最近的会话作为当前会话
+                    sorted_sessions = sorted(
+                        historical_sessions.values(), 
+                        key=lambda s: s.last_message_at, 
+                        reverse=True
+                    )
+                    context.current_session_id = sorted_sessions[0].id if sorted_sessions else None
+                    
+                    # 为每个会话初始化runner
+                    for session_id in historical_sessions:
+                        await self._init_session_runner(context, session_id)
+                    
+                    logger.info(f"已恢复 {len(historical_sessions)} 个历史会话")
+                else:
+                    # 新的AK用户，创建首个会话
+                    logger.info("没有找到历史会话，创建新会话")
+                    session = await self.create_session(context)
+                    context.current_session_id = session.id
+            except Exception as e:
+                logger.error(f"加载历史会话失败: {e}")
+                # 加载失败时创建新会话
+                session = await self.create_session(context)
+                context.current_session_id = session.id
+        else:
+            # 临时用户，创建默认会话
+            logger.info(f"临时用户连接（无AK）: {context.user_id}")
+            session = await self.create_session(context)
+            context.current_session_id = session.id
+        
         # 发送初始会话信息
         await self.send_sessions_list(context)
         
-    def disconnect_client(self, websocket: WebSocket):
+        # 如果有当前会话，发送其消息历史
+        if context.current_session_id:
+            await self.send_session_messages(context, context.current_session_id)
+        
+    async def disconnect_client(self, websocket: WebSocket):
         """断开客户端连接"""
         if websocket in self.active_connections:
             context = self.active_connections[websocket]
             logger.info(f"用户断开连接: {context.user_id}")
+            
+            # 如果有AK，保存所有会话
+            if context.access_key:
+                for session in context.sessions.values():
+                    try:
+                        await self.persistent_manager.save_session(
+                            context.access_key,
+                            session
+                        )
+                        logger.info(f"断开连接时保存会话: {session.id}")
+                    except Exception as e:
+                        logger.error(f"保存会话失败: {e}")
+            
             # 清理文件监视器
             context.cleanup()
             # 清理该连接的所有资源
@@ -508,7 +738,9 @@ class SessionManager:
             await context.websocket.send_json(message)
         except Exception as e:
             logger.error(f"发送消息失败: {e}")
-            self.disconnect_client(context.websocket)
+            # 注意：这里不能使用 await，因为在同步上下文中
+            # 创建一个新的任务来处理断开连接
+            asyncio.create_task(self.disconnect_client(context.websocket))
     
     async def process_message(self, context: ConnectionContext, message: str):
         """处理用户消息"""
@@ -538,172 +770,168 @@ class SessionManager:
         # 保存用户消息到会话历史
         session.add_message("user", message)
         
-        # 保存原始的AK环境变量（如果存在）
-        original_ak = os.environ.get("AK")
-        
         try:
-            # 设置当前连接的AK
-            if context.access_key:
-                os.environ["AK"] = context.access_key
-                logger.info(f"设置环境变量 AK: {context.access_key}...")
-            
-            content = types.Content(
-                role='user',
-                parts=[types.Part(text=message)]
-            )
-            
-            # 收集所有事件
-            all_events = []
-            seen_tool_calls = set()  # 跟踪已发送的工具调用
-            seen_tool_responses = set()  # 跟踪已发送的工具响应
-            
-            async for event in runner.run_async(
-                new_message=content,
-                user_id=context.user_id,
-                session_id=context.current_session_id
-            ):
-                all_events.append(event)
-                logger.info(f"Received event: {type(event).__name__}")
+            # 使用线程安全的环境变量设置
+            with temporary_env_var("AK", context.access_key):
+                if context.access_key:
+                    logger.info(f"使用AK: {context.access_key[:8]}...")
                 
-                # 检查事件中的工具调用（按照官方示例）
-                if hasattr(event, 'content') and event.content and hasattr(event.content, 'parts'):
-                    for part in event.content.parts:
-                        # 检查是否是函数调用
-                        if hasattr(part, 'function_call') and part.function_call:
-                            function_call = part.function_call
-                            tool_name = getattr(function_call, 'name', 'unknown')
-                            tool_id = getattr(function_call, 'id', tool_name)
-                            
-                            # 避免重复发送相同的工具调用
-                            if tool_id in seen_tool_calls:
-                                continue
-                            seen_tool_calls.add(tool_id)
-                            
-                            tool_executing_msg = {
-                                "type": "tool",
-                                "tool_name": tool_name,
-                                "status": "executing",
-                                "timestamp": datetime.now().isoformat()
-                            }
-                            logger.info(f"Sending tool executing status: {tool_executing_msg}")
-                            await self.send_to_connection(context, tool_executing_msg)
-                            logger.info(f"Tool call detected: {tool_name}")
-                            # 给前端一点时间来处理和显示执行状态
-                            await asyncio.sleep(0.1)
-                        
-                        # 检查是否是函数响应（工具完成）
-                        elif hasattr(part, 'function_response') and part.function_response:
-                            function_response = part.function_response
-                            # 从响应中获取更多信息
-                            tool_name = "unknown"
-                            tool_result = None
-                            
-                            if hasattr(function_response, 'name'):
-                                tool_name = function_response.name
-                            
-                            # 创建唯一标识符
-                            response_id = f"{tool_name}_response"
-                            if hasattr(function_response, 'id'):
-                                response_id = function_response.id
-                            
-                            # 避免重复发送相同的工具响应
-                            if response_id in seen_tool_responses:
-                                continue
-                            seen_tool_responses.add(response_id)
-                            
-                            if hasattr(function_response, 'response'):
-                                response_data = function_response.response
+                content = types.Content(
+                    role='user',
+                    parts=[types.Part(text=message)]
+                )
+                
+                # 收集所有事件
+                all_events = []
+                seen_tool_calls = set()  # 跟踪已发送的工具调用
+                seen_tool_responses = set()  # 跟踪已发送的工具响应
+                
+                async for event in runner.run_async(
+                    new_message=content,
+                    user_id=context.user_id,
+                    session_id=context.current_session_id
+                ):
+                    all_events.append(event)
+                    logger.info(f"Received event: {type(event).__name__}")
+                    
+                    # 检查事件中的工具调用（按照官方示例）
+                    if hasattr(event, 'content') and event.content and hasattr(event.content, 'parts'):
+                        for part in event.content.parts:
+                            # 检查是否是函数调用
+                            if hasattr(part, 'function_call') and part.function_call:
+                                function_call = part.function_call
+                                tool_name = getattr(function_call, 'name', 'unknown')
+                                tool_id = getattr(function_call, 'id', tool_name)
                                 
-                                # 智能格式化不同类型的响应
-                                if isinstance(response_data, dict):
-                                    # 如果是字典，尝试美化JSON格式
-                                    try:
-                                        result_str = json.dumps(response_data, indent=2, ensure_ascii=False)
-                                    except:
-                                        result_str = str(response_data)
-                                elif isinstance(response_data, (list, tuple)):
-                                    # 如果是列表或元组，也尝试JSON格式化
-                                    try:
-                                        result_str = json.dumps(response_data, indent=2, ensure_ascii=False)
-                                    except:
-                                        result_str = str(response_data)
-                                elif isinstance(response_data, str):
-                                    # 字符串直接使用，保留原始格式
-                                    result_str = response_data
-                                else:
-                                    # 其他类型转换为字符串
-                                    result_str = str(response_data)
+                                # 避免重复发送相同的工具调用
+                                if tool_id in seen_tool_calls:
+                                    continue
+                                seen_tool_calls.add(tool_id)
                                 
-                                tool_completed_msg = {
+                                tool_executing_msg = {
                                     "type": "tool",
                                     "tool_name": tool_name,
-                                    "status": "completed",
-                                    "result": result_str,
+                                    "status": "executing",
                                     "timestamp": datetime.now().isoformat()
                                 }
-                                logger.info(f"Sending tool completed status: {tool_name}")
-                                await self.send_to_connection(context, tool_completed_msg)
-                            else:
-                                # 没有结果的情况
-                                await self.send_to_connection(context, {
-                                    "type": "tool",
-                                    "tool_name": tool_name,
-                                    "status": "completed",
-                                    "timestamp": datetime.now().isoformat()
-                                })
+                                logger.info(f"Sending tool executing status: {tool_executing_msg}")
+                                await self.send_to_connection(context, tool_executing_msg)
+                                logger.info(f"Tool call detected: {tool_name}")
+                                # 给前端一点时间来处理和显示执行状态
+                                await asyncio.sleep(0.1)
                             
-                            logger.info(f"Tool response received: {tool_name}")
-            
-            # 处理所有事件，只获取最后一个有效响应
-            logger.info(f"Total events: {len(all_events)}")
-            
-            final_response = None
-            # 从后往前查找最后一个有效的响应
-            for event in reversed(all_events):
-                if hasattr(event, 'content') and event.content:
-                    content = event.content
-                    # 处理 Google ADK 的 Content 对象
-                    if hasattr(content, 'parts') and content.parts:
-                        # 提取所有文本部分
-                        text_parts = []
-                        for part in content.parts:
-                            if hasattr(part, 'text') and part.text:
-                                text_parts.append(part.text)
-                        if text_parts:
-                            final_response = '\n'.join(text_parts)
-                            break
-                    elif hasattr(content, 'text') and content.text:
-                        final_response = content.text
-                        break
-                elif hasattr(event, 'text') and event.text:
-                    final_response = event.text
-                    break
-                elif hasattr(event, 'output') and event.output:
-                    final_response = event.output
-                    break
-                elif hasattr(event, 'message') and event.message:
-                    final_response = event.message
-                    break
-            
-            # 只发送最后一个响应内容
-            if final_response:
-                logger.info(f"Sending final response: {final_response[:200]}")
-                # 保存助手回复到会话历史
-                session.add_message("assistant", final_response)
+                            # 检查是否是函数响应（工具完成）
+                            elif hasattr(part, 'function_response') and part.function_response:
+                                function_response = part.function_response
+                                # 从响应中获取更多信息
+                                tool_name = "unknown"
+                                
+                                if hasattr(function_response, 'name'):
+                                    tool_name = function_response.name
+                                
+                                # 创建唯一标识符
+                                response_id = f"{tool_name}_response"
+                                if hasattr(function_response, 'id'):
+                                    response_id = function_response.id
+                                
+                                # 避免重复发送相同的工具响应
+                                if response_id in seen_tool_responses:
+                                    continue
+                                seen_tool_responses.add(response_id)
+                                
+                                if hasattr(function_response, 'response'):
+                                    response_data = function_response.response
+                                    
+                                    # 智能格式化不同类型的响应
+                                    if isinstance(response_data, dict):
+                                        # 如果是字典，尝试美化JSON格式
+                                        try:
+                                            result_str = json.dumps(response_data, indent=2, ensure_ascii=False)
+                                        except:
+                                            result_str = str(response_data)
+                                    elif isinstance(response_data, (list, tuple)):
+                                        # 如果是列表或元组，也尝试JSON格式化
+                                        try:
+                                            result_str = json.dumps(response_data, indent=2, ensure_ascii=False)
+                                        except:
+                                            result_str = str(response_data)
+                                    elif isinstance(response_data, str):
+                                        # 字符串直接使用，保留原始格式
+                                        result_str = response_data
+                                    else:
+                                        # 其他类型转换为字符串
+                                        result_str = str(response_data)
+                                    
+                                    tool_completed_msg = {
+                                        "type": "tool",
+                                        "tool_name": tool_name,
+                                        "status": "completed",
+                                        "result": result_str,
+                                        "timestamp": datetime.now().isoformat()
+                                    }
+                                    logger.info(f"Sending tool completed status: {tool_name}")
+                                    await self.send_to_connection(context, tool_completed_msg)
+                                else:
+                                    # 没有结果的情况
+                                    await self.send_to_connection(context, {
+                                        "type": "tool",
+                                        "tool_name": tool_name,
+                                        "status": "completed",
+                                        "timestamp": datetime.now().isoformat()
+                                    })
+                                
+                                logger.info(f"Tool response received: {tool_name}")
                 
+                # 处理所有事件，只获取最后一个有效响应
+                logger.info(f"Total events: {len(all_events)}")
+                
+                final_response = None
+                # 从后往前查找最后一个有效的响应
+                for event in reversed(all_events):
+                    if hasattr(event, 'content') and event.content:
+                        content = event.content
+                        # 处理 Google ADK 的 Content 对象
+                        if hasattr(content, 'parts') and content.parts:
+                            # 提取所有文本部分
+                            text_parts = []
+                            for part in content.parts:
+                                if hasattr(part, 'text') and part.text:
+                                    text_parts.append(part.text)
+                            if text_parts:
+                                final_response = '\n'.join(text_parts)
+                                break
+                        elif hasattr(content, 'text') and content.text:
+                            final_response = content.text
+                            break
+                    elif hasattr(event, 'text') and event.text:
+                        final_response = event.text
+                        break
+                    elif hasattr(event, 'output') and event.output:
+                        final_response = event.output
+                        break
+                    elif hasattr(event, 'message') and event.message:
+                        final_response = event.message
+                        break
+                
+                # 只发送最后一个响应内容
+                if final_response:
+                    logger.info(f"Sending final response: {final_response[:200]}")
+                    # 保存助手回复到会话历史
+                    session.add_message("assistant", final_response)
+                    
+                    await self.send_to_connection(context, {
+                        "type": "assistant",
+                        "content": final_response,
+                        "session_id": context.current_session_id
+                    })
+                else:
+                    logger.warning("No response content found in events")
+                
+                # 发送一个空的完成标记，前端会识别这个来停止loading
                 await self.send_to_connection(context, {
-                    "type": "assistant",
-                    "content": final_response,
-                    "session_id": context.current_session_id
+                    "type": "complete",
+                    "content": ""
                 })
-            else:
-                logger.warning("No response content found in events")
-            
-            # 发送一个空的完成标记，前端会识别这个来停止loading
-            await self.send_to_connection(context, {
-                "type": "complete",
-                "content": ""
-            })
                     
         except Exception as e:
             import traceback
@@ -718,28 +946,31 @@ class SessionManager:
                 for i, sub_exc in enumerate(e.exceptions):
                     logger.error(f"子异常 {i}: {sub_exc}", exc_info=(type(sub_exc), sub_exc, sub_exc.__traceback__))
             
-            await context.websocket.send_json({
-                "type": "error",
-                "content": f"处理消息失败: {str(e)}"
-            })
+                await context.websocket.send_json({
+                    "type": "error",
+                    "content": f"处理消息失败: {str(e)}"
+                })
         
-        finally:
-            # 恢复原始环境变量
-            if original_ak is not None:
-                os.environ["AK"] = original_ak
-                logger.info("恢复原始环境变量 AK")
-            elif "AK" in os.environ:
-                del os.environ["AK"]
-                logger.info("删除环境变量 AK")
+        # 如果有AK，保存会话
+        if context.access_key and context.current_session_id:
+            try:
+                await self.persistent_manager.save_session(
+                    context.access_key,
+                    session
+                )
+                logger.info(f"已自动保存会话: {session.id}")
+            except Exception as e:
+                logger.error(f"自动保存会话失败: {e}")
 
 # 创建全局管理器
 manager = SessionManager()
+
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """WebSocket 端点"""
     # 提取AK信息
-    access_key, app_key = get_ak_info_from_request(websocket.headers)
+    access_key, _ = get_ak_info_from_request(websocket.headers)
     
     await manager.connect_client(websocket, access_key)
     
@@ -785,7 +1016,7 @@ async def websocket_endpoint(websocket: WebSocket):
             elif message_type == "delete_session":
                 # 删除会话
                 session_id = data.get("session_id")
-                if session_id and manager.delete_session(context, session_id):
+                if session_id and await manager.delete_session(context, session_id):
                     # 如果删除的是当前会话，切换到其他会话或创建新会话
                     if session_id == context.current_session_id:
                         if context.sessions:
@@ -805,10 +1036,10 @@ async def websocket_endpoint(websocket: WebSocket):
                     
                 
     except WebSocketDisconnect:
-        manager.disconnect_client(websocket)
+        await manager.disconnect_client(websocket)
     except Exception as e:
         logger.error(f"WebSocket 错误: {e}")
-        manager.disconnect_client(websocket)
+        await manager.disconnect_client(websocket)
 
 @app.get("/api/files/tree")
 async def get_file_tree(path: str = None):
@@ -946,14 +1177,106 @@ async def status():
     }
 
 @app.get("/api/config")
-async def get_config():
+async def get_config(request: Request):
     """获取前端配置信息"""
+    access_key, _ = get_ak_info_from_request(request.headers)
     return JSONResponse(content={
         "agent": agentconfig.config.get("agent", {}),
         "ui": agentconfig.get_ui_config(),
         "files": agentconfig.get_files_config(),
-        "websocket": agentconfig.get_websocket_config()
+        "websocket": agentconfig.get_websocket_config(),
+        "user_type": "registered" if access_key else "temporary"
     })
+
+
+@app.delete("/api/sessions/clear")
+async def clear_user_sessions(request: Request):
+    """清除当前用户的所有历史会话"""
+    access_key, _ = get_ak_info_from_request(request.headers)
+    
+    if not access_key:
+        return JSONResponse(
+            content={"error": "临时用户没有历史会话"},
+            status_code=400
+        )
+    
+    try:
+        # 获取用户的会话目录
+        ak_hash = manager.persistent_manager._get_ak_hash(access_key)
+        user_sessions_dir = manager.persistent_manager.ak_sessions_dir / ak_hash / "sessions"
+        
+        if user_sessions_dir.exists():
+            # 删除所有会话文件
+            shutil.rmtree(user_sessions_dir)
+            user_sessions_dir.mkdir(parents=True, exist_ok=True)
+            
+            logger.info(f"清除用户 {access_key[:8]}... 的所有历史会话")
+            
+            return JSONResponse(content={
+                "message": "历史会话已清除",
+                "status": "success"
+            })
+        else:
+            return JSONResponse(content={
+                "message": "没有找到历史会话",
+                "status": "success"
+            })
+            
+    except Exception as e:
+        logger.error(f"清除历史会话失败: {e}")
+        return JSONResponse(
+            content={"error": f"清除失败: {str(e)}"},
+            status_code=500
+        )
+
+
+@app.get("/api/sessions/export")
+async def export_user_sessions(request: Request):
+    """导出当前用户的所有会话"""
+    access_key, _ = get_ak_info_from_request(request.headers)
+    
+    if not access_key:
+        return JSONResponse(
+            content={"error": "临时用户没有会话可导出"},
+            status_code=400
+        )
+    
+    try:
+        # 加载用户的所有会话
+        sessions = await manager.persistent_manager.load_user_sessions(access_key)
+        
+        if not sessions:
+            return JSONResponse(
+                content={"error": "没有找到会话"},
+                status_code=404
+            )
+        
+        # 构建导出数据
+        export_data = {
+            "export_time": datetime.now().isoformat(),
+            "user_type": "registered",
+            "sessions": []
+        }
+        
+        for session in sessions.values():
+            session_data = manager.persistent_manager._serialize_session(session)
+            export_data["sessions"].append(session_data)
+        
+        # 返回JSON文件
+        return Response(
+            content=json.dumps(export_data, indent=2, ensure_ascii=False),
+            media_type="application/json",
+            headers={
+                "Content-Disposition": f"attachment; filename=sessions_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"导出会话失败: {e}")
+        return JSONResponse(
+            content={"error": f"导出失败: {str(e)}"},
+            status_code=500
+        )
 
 
 # 挂载静态文件服务

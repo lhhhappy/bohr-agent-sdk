@@ -22,7 +22,8 @@ load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 
 # Use model from environment or default to deepseek
 model_type = os.getenv('MODEL', 'deepseek/deepseek-chat')
-
+ak = os.getenv('AK', '')
+print(f"AK: {ak}")
 
 def search_papers(topic: str, max_results: int = 5) -> List[str]:
     """
