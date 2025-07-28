@@ -900,26 +900,26 @@ class SessionManager:
                     elif hasattr(event, 'message') and event.message:
                         final_response = event.message
                         break
+            
+            # 只发送最后一个响应内容
+            if final_response:
+                logger.info(f"Sending final response: {final_response[:200]}")
+                # 保存助手回复到会话历史
+                session.add_message("assistant", final_response)
                 
-                # 只发送最后一个响应内容
-                if final_response:
-                    logger.info(f"Sending final response: {final_response[:200]}")
-                    # 保存助手回复到会话历史
-                    session.add_message("assistant", final_response)
-                    
-                    await self.send_to_connection(context, {
-                        "type": "assistant",
-                        "content": final_response,
-                        "session_id": context.current_session_id
-                    })
-                else:
-                    logger.warning("No response content found in events")
-                
-                # 发送一个空的完成标记，前端会识别这个来停止loading
                 await self.send_to_connection(context, {
-                    "type": "complete",
-                    "content": ""
+                    "type": "assistant",
+                    "content": final_response,
+                    "session_id": context.current_session_id
                 })
+            else:
+                logger.warning("No response content found in events")
+            
+            # 发送一个空的完成标记，前端会识别这个来停止loading
+            await self.send_to_connection(context, {
+                "type": "complete",
+                "content": ""
+            })
                     
         except Exception as e:
             import traceback
