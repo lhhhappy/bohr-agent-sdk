@@ -175,8 +175,12 @@ app.add_middleware(
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         try:
-            # 简单记录请求信息
-            logger.info(f"收到请求: {request.method} {request.url.path}")
+            # 记录请求信息和 AK
+            access_key, _ = get_ak_info_from_request(request.headers)
+            if access_key:
+                logger.info(f"收到请求: {request.method} {request.url.path} [AK: {access_key[:8]}...]")
+            else:
+                logger.info(f"收到请求: {request.method} {request.url.path} [临时用户]")
         except:
             # 忽略任何日志错误
             pass
