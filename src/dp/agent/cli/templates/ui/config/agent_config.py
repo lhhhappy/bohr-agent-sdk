@@ -61,15 +61,33 @@ class AgentConfig:
             }
         }
     
-    def get_agent(self):
-        """Dynamically import and return the configured agent"""
+    def get_agent(self, ak: str = None):
+        """Dynamically import and return the configured agent
+        
+        Args:
+            ak: Optional access key to pass to the agent
+        """
         agentconfig = self.config.get("agent", {})
         module_name = agentconfig.get("module", "agent.subagent")
         agentname = agentconfig.get("rootAgent", "rootagent")
         
         try:
             module = importlib.import_module(module_name)
-            return getattr(module, agentname)
+            
+            # 检查是否有 create_agent 函数（推荐的方式）
+            if hasattr(module, 'create_agent'):
+                # 使用工厂函数创建新的 agent 实例
+                # 检查函数是否接受 ak 参数
+                import inspect
+                sig = inspect.signature(module.create_agent)
+                if 'ak' in sig.parameters:
+                    return module.create_agent(ak=ak)
+                else:
+                    # 后向兼容：不接受 ak 参数
+                    return module.create_agent()
+            else:
+                # 后向兼容：直接返回模块级别的 agent
+                return getattr(module, agentname)
         except (ImportError, AttributeError) as e:
             raise ImportError(f"Failed to load agent {agentname} from {module_name}: {e}")
     

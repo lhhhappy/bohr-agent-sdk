@@ -22,8 +22,7 @@ load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 
 # Use model from environment or default to deepseek
 model_type = os.getenv('MODEL', 'deepseek/deepseek-chat')
-ak = os.getenv('AK', '')
-print(f"AK: {ak}")
+
 
 def search_papers(topic: str, max_results: int = 5) -> List[str]:
     """
@@ -110,9 +109,60 @@ def extract_info(paper_id: str) -> str:
     return f"There's no saved information related to paper {paper_id}."
 
 # Create agent
-root_agent = Agent(
-    name="mcp_sse_agent",
-    model=LiteLlm(model=model_type),
-    instruction="You are an intelligent assistant capable of using external tools.",
-    tools=[search_papers, extract_info]
-)
+
+def show_ak():
+    """
+    Show the AK
+    Args:
+        None
+    Returns:
+        The AK
+    """
+    ak = os.getenv('AK', '')
+    print(f"AK: {ak}")
+    if ak:
+        return f"My AK is: {ak}"
+    else:
+        return "I don't have an AK (temporary user)"
+
+# 不要在模块级别创建 agent，而是提供一个工厂函数
+def create_agent(ak: str = None):
+    """动态创建 agent
+    
+    Args:
+        ak: 可选的 AK 参数，如果不提供则从环境变量读取
+    """
+    
+    print(f"Creating agent with AK: {ak[:8] if ak else 'None'}...")
+    
+    # 如果没有提供AK，从环境变量获取
+    if not ak:
+        ak = os.getenv('AK', '')
+    
+    # 保存AK到闭包中
+    agent_ak = ak
+    
+    def show_ak():
+        """
+        Show the AK
+        Args:
+            None
+        Returns:
+            The AK
+        """
+        # 使用闭包中保存的AK
+        if agent_ak:
+            return f"My AK is: {agent_ak}"
+        else:
+            return "I don't have an AK (temporary user)"
+    
+    return Agent(
+        name="mcp_sse_agent",
+        model=LiteLlm(model=model_type),
+        instruction="You are an intelligent assistant capable of using external tools.",
+        tools=[show_ak]
+    )
+
+# 保留一个默认的 root_agent 以保持向后兼容
+# 注意：这里不传入AK，让默认agent不包含任何AK信息
+root_agent = create_agent(ak="")

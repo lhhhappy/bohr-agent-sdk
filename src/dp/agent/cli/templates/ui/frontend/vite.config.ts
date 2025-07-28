@@ -16,6 +16,7 @@ export default defineConfig({
     // Use environment variable or default to 3000 for dev server
     port: parseInt(process.env.FRONTEND_PORT || '3000'),
     host: '0.0.0.0',
+    allowedHosts: true,
     proxy: {
       // Proxy API and WebSocket requests to the backend server
       '/api': {

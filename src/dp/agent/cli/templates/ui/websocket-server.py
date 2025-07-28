@@ -27,12 +27,10 @@ import time
 from dataclasses import dataclass, field
 import uuid
 from http.cookies import SimpleCookie
-import contextvars
-from contextlib import contextmanager
-import threading
 import hashlib
 import aiofiles
 import shutil
+from concurrent.futures import ThreadPoolExecutor
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -54,28 +52,7 @@ from google.genai import types
 # Import configuration
 from config.agent_config import agentconfig
 
-# 创建上下文变量用于管理AK
-current_access_key = contextvars.ContextVar('access_key', default=None)
-
-# 环境变量锁（用于兼容必须使用环境变量的代码）
-env_lock = threading.Lock()
-
-@contextmanager
-def temporary_env_var(key: str, value: Optional[str]):
-    """线程安全的临时环境变量设置"""
-    with env_lock:
-        original = os.environ.get(key)
-        try:
-            if value is not None:
-                os.environ[key] = value
-            elif key in os.environ:
-                del os.environ[key]
-            yield
-        finally:
-            if original is not None:
-                os.environ[key] = original
-            elif key in os.environ:
-                del os.environ[key]
+# 不再需要环境变量管理，因为我们直接传递 AK 给 agent
 
 # 不再在启动时创建 agent
 # 每个用户连接时会根据他们的 AK 创建独立的 agent
@@ -540,24 +517,30 @@ class SessionManager:
     async def _init_session_runner(self, context: ConnectionContext, session_id: str):
         """异步初始化会话的runner"""
         try:
-            # 使用用户的 AK 创建 agent 和 runner
-            with temporary_env_var("AK", context.access_key):
-                # 每次都重新获取 agent，以便使用正确的 AK
-                user_agent = agentconfig.get_agent()
-                logger.info(f"为用户创建 Runner，AK: {context.access_key[:8] if context.access_key else 'None'}...")
-                
-                session_service = InMemorySessionService()
-                await session_service.create_session(
-                    app_name=self.app_name,
-                    user_id=context.user_id,
-                    session_id=session_id
-                )
-                
-                runner = Runner(
-                    agent=user_agent,
-                    session_service=session_service,
-                    app_name=self.app_name
-                )
+            # 直接传递 AK 给 agent，避免使用环境变量
+            logger.info(f"开始为会话 {session_id} 创建 Runner，AK: {context.access_key[:8] if context.access_key else 'None'}...")
+            
+            # 在异步任务中创建agent，避免阻塞主线程
+            # 确保传入正确的AK（如果是空字符串或None，agent应该知道这是临时用户）
+            loop = asyncio.get_event_loop()
+            user_agent = await loop.run_in_executor(
+                None, 
+                agentconfig.get_agent, 
+                context.access_key if context.access_key else ""
+            )
+            
+            session_service = InMemorySessionService()
+            await session_service.create_session(
+                app_name=self.app_name,
+                user_id=context.user_id,
+                session_id=session_id
+            )
+            
+            runner = Runner(
+                agent=user_agent,
+                session_service=session_service,
+                app_name=self.app_name
+            )
             
             context.session_services[session_id] = session_service
             context.runners[session_id] = runner
@@ -565,7 +548,7 @@ class SessionManager:
             logger.info(f"Runner 初始化完成: {session_id}")
             
         except Exception as e:
-            logger.error(f"初始化Runner失败: {e}")
+            logger.error(f"初始化Runner失败 (session_id: {session_id}): {e}", exc_info=True)
             # 清理失败的会话
             if session_id in context.sessions:
                 del context.sessions[session_id]
@@ -636,11 +619,14 @@ class SessionManager:
                     )
                     context.current_session_id = sorted_sessions[0].id if sorted_sessions else None
                     
-                    # 为每个会话初始化runner
+                    # 为每个会话异步初始化runner
+                    init_tasks = []
                     for session_id in historical_sessions:
-                        await self._init_session_runner(context, session_id)
+                        task = asyncio.create_task(self._init_session_runner(context, session_id))
+                        init_tasks.append(task)
                     
-                    logger.info(f"已恢复 {len(historical_sessions)} 个历史会话")
+                    # 不等待所有任务完成，让它们在后台运行
+                    logger.info(f"已恢复 {len(historical_sessions)} 个历史会话，正在后台初始化Runner...")
                 else:
                     # 新的AK用户，创建首个会话
                     logger.info("没有找到历史会话，创建新会话")
@@ -775,22 +761,20 @@ class SessionManager:
         session.add_message("user", message)
         
         try:
-            # 使用线程安全的环境变量设置
-            with temporary_env_var("AK", context.access_key):
-                if context.access_key:
-                    logger.info(f"使用AK: {context.access_key[:8]}...")
-                
-                content = types.Content(
-                    role='user',
-                    parts=[types.Part(text=message)]
-                )
-                
-                # 收集所有事件
-                all_events = []
-                seen_tool_calls = set()  # 跟踪已发送的工具调用
-                seen_tool_responses = set()  # 跟踪已发送的工具响应
-                
-                async for event in runner.run_async(
+            if context.access_key:
+                logger.info(f"处理消息，用户AK: {context.access_key[:8]}...")
+            
+            content = types.Content(
+                role='user',
+                parts=[types.Part(text=message)]
+            )
+            
+            # 收集所有事件
+            all_events = []
+            seen_tool_calls = set()  # 跟踪已发送的工具调用
+            seen_tool_responses = set()  # 跟踪已发送的工具响应
+            
+            async for event in runner.run_async(
                     new_message=content,
                     user_id=context.user_id,
                     session_id=context.current_session_id
@@ -885,25 +869,25 @@ class SessionManager:
                                     })
                                 
                                 logger.info(f"Tool response received: {tool_name}")
-                
-                # 处理所有事件，只获取最后一个有效响应
-                logger.info(f"Total events: {len(all_events)}")
-                
-                final_response = None
-                # 从后往前查找最后一个有效的响应
-                for event in reversed(all_events):
-                    if hasattr(event, 'content') and event.content:
-                        content = event.content
-                        # 处理 Google ADK 的 Content 对象
-                        if hasattr(content, 'parts') and content.parts:
-                            # 提取所有文本部分
-                            text_parts = []
-                            for part in content.parts:
-                                if hasattr(part, 'text') and part.text:
-                                    text_parts.append(part.text)
-                            if text_parts:
-                                final_response = '\n'.join(text_parts)
-                                break
+            
+            # 处理所有事件，只获取最后一个有效响应
+            logger.info(f"Total events: {len(all_events)}")
+            
+            final_response = None
+            # 从后往前查找最后一个有效的响应
+            for event in reversed(all_events):
+                if hasattr(event, 'content') and event.content:
+                    content = event.content
+                    # 处理 Google ADK 的 Content 对象
+                    if hasattr(content, 'parts') and content.parts:
+                        # 提取所有文本部分
+                        text_parts = []
+                        for part in content.parts:
+                            if hasattr(part, 'text') and part.text:
+                                text_parts.append(part.text)
+                        if text_parts:
+                            final_response = '\n'.join(text_parts)
+                            break
                         elif hasattr(content, 'text') and content.text:
                             final_response = content.text
                             break
