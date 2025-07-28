@@ -11,6 +11,8 @@ from typing import Literal, Optional, get_origin
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.server import Context
 from mcp.server.fastmcp.utilities.func_metadata import _get_typed_signature
+from starlette.responses import JSONResponse
+from starlette.routing import Route
 
 from .executor import executor_dict
 from .storage import storage_dict
@@ -282,4 +284,16 @@ class CalculationMCPServer:
     def run(self, **kwargs):
         if os.environ.get("DP_AGENT_RUNNING_MODE") in ["1", "true"]:
             return
+        async def health_check(request) :
+            return JSONResponse({"status": "ok"})
+        
+        self.mcp._custom_starlette_routes.append(
+            Route(
+                "/health",
+                endpoint=health_check,
+                methods=["GET"],
+                name="health_check",
+                include_in_schema=True,
+            )
+        )
         self.mcp.run(**kwargs)

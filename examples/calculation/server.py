@@ -90,4 +90,4 @@ def run_dp_train(
 
 
 if __name__ == "__main__":
-    mcp.run(transport="stdio")
+    mcp.run(transport="sse")
