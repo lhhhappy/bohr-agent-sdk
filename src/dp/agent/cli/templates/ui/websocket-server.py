@@ -596,6 +596,7 @@ class SessionManager:
                             function_response = part.function_response
                             # 从响应中获取更多信息
                             tool_name = "unknown"
+                            tool_result = None
                             
                             if hasattr(function_response, 'name'):
                                 tool_name = function_response.name
@@ -734,12 +735,11 @@ class SessionManager:
 # 创建全局管理器
 manager = SessionManager()
 
-
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """WebSocket 端点"""
     # 提取AK信息
-    access_key, _ = get_ak_info_from_request(websocket.headers)
+    access_key, app_key = get_ak_info_from_request(websocket.headers)
     
     await manager.connect_client(websocket, access_key)
     

@@ -1,0 +1,20 @@
+{
+    "agent": {
+        "name": "AK测试Agent",
+        "description": "用于测试WebSocket Cookie AK提取功能",
+        "welcomeMessage": "欢迎！请输入'获取AK'来测试AK提取功能",
+        "module": "test_ak_agent",
+        "rootAgent": "rootagent"
+    },
+    "ui": {
+        "title": "AK提取测试",
+        "features": {
+            "showFileExplorer": false,
+            "showSessionList": true
+        }
+    },
+    "server": {
+        "host": ["localhost", "127.0.0.1"],
+        "port": 8000
+    }
+}
