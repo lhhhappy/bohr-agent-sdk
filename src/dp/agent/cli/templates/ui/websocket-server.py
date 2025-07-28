@@ -21,20 +21,18 @@ import asyncio
 import json
 import logging
 from pathlib import Path
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Tuple
 from datetime import datetime
 import time
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 import uuid
-import subprocess
-import shlex
+from http.cookies import SimpleCookie
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.types import ASGIApp, Receive, Scope, Send
 import uvicorn
 import logging
 from watchdog.observers import Observer
@@ -257,18 +255,13 @@ class FileChangeHandler(FileSystemEventHandler):
 
 class ConnectionContext:
     """每个WebSocket连接的独立上下文"""
-    def __init__(self, websocket: WebSocket):
+    def __init__(self, websocket: WebSocket, access_key: str = ""):
         self.websocket = websocket
+        self.access_key = access_key  # 存储该连接的AK
         self.sessions: Dict[str, Session] = {}
         self.runners: Dict[str, Runner] = {}
         self.session_services: Dict[str, InMemorySessionService] = {}
         self.current_session_id: Optional[str] = None
-        # Use user's working directory if available
-        user_working_dir = os.environ.get('USER_WORKING_DIR', os.getcwd())
-        self.shell_state: Dict[str, any] = {
-            "cwd": user_working_dir,
-            "env": os.environ.copy()
-        }
         # 为每个连接生成唯一的user_id
         self.user_id = f"user_{uuid.uuid4().hex[:8]}"
         # 文件监视器
@@ -326,6 +319,24 @@ class ConnectionContext:
             except Exception as e:
                 logger.error(f"停止文件监视器失败: {e}")
         self.file_observers.clear()
+
+def get_ak_info_from_request(headers) -> Tuple[str, str]:
+    """从请求头中提取AK信息"""
+    cookie_header = headers.get("cookie", "")
+    if cookie_header:
+        simple_cookie = SimpleCookie()
+        simple_cookie.load(cookie_header)
+        
+        access_key = ""
+        app_key = ""
+        
+        if "appAccessKey" in simple_cookie:
+            access_key = simple_cookie["appAccessKey"].value
+        if "clientName" in simple_cookie:
+            app_key = simple_cookie["clientName"].value
+            
+        return access_key, app_key
+    return "", ""
 
 class SessionManager:
     def __init__(self):
@@ -415,15 +426,15 @@ class SessionManager:
             return True
         return False
     
-    async def connect_client(self, websocket: WebSocket):
+    async def connect_client(self, websocket: WebSocket, access_key: str = ""):
         """连接新客户端"""
         await websocket.accept()
         
-        # 为新连接创建独立的上下文
-        context = ConnectionContext(websocket)
+        # 为新连接创建独立的上下文，包含AK
+        context = ConnectionContext(websocket, access_key)
         self.active_connections[websocket] = context
         
-        logger.info(f"新用户连接: {context.user_id}")
+        logger.info(f"新用户连接: {context.user_id}, AK: {access_key[:8]}..." if access_key else f"新用户连接: {context.user_id}")
         
         # 创建默认会话
         session = await self.create_session(context)
@@ -527,7 +538,14 @@ class SessionManager:
         # 保存用户消息到会话历史
         session.add_message("user", message)
         
+        # 保存原始的AK环境变量（如果存在）
+        original_ak = os.environ.get("AK")
+        
         try:
+            # 设置当前连接的AK
+            if context.access_key:
+                os.environ["AK"] = context.access_key
+                logger.info(f"设置环境变量 AK: {context.access_key}...")
             
             content = types.Content(
                 role='user',
@@ -561,23 +579,15 @@ class SessionManager:
                                 continue
                             seen_tool_calls.add(tool_id)
                             
-                            # 检查是否是长时间运行的工具
-                            is_long_running = False
-                            if (hasattr(event, 'long_running_tool_ids') and 
-                                event.long_running_tool_ids and 
-                                hasattr(function_call, 'id')):
-                                is_long_running = function_call.id in event.long_running_tool_ids
-                            
                             tool_executing_msg = {
                                 "type": "tool",
                                 "tool_name": tool_name,
                                 "status": "executing",
-                                "is_long_running": is_long_running,
                                 "timestamp": datetime.now().isoformat()
                             }
                             logger.info(f"Sending tool executing status: {tool_executing_msg}")
                             await self.send_to_connection(context, tool_executing_msg)
-                            logger.info(f"Tool call detected: {tool_name} (long_running: {is_long_running})")
+                            logger.info(f"Tool call detected: {tool_name}")
                             # 给前端一点时间来处理和显示执行状态
                             await asyncio.sleep(0.1)
                         
@@ -586,7 +596,6 @@ class SessionManager:
                             function_response = part.function_response
                             # 从响应中获取更多信息
                             tool_name = "unknown"
-                            tool_result = None
                             
                             if hasattr(function_response, 'name'):
                                 tool_name = function_response.name
@@ -712,14 +721,27 @@ class SessionManager:
                 "type": "error",
                 "content": f"处理消息失败: {str(e)}"
             })
+        
+        finally:
+            # 恢复原始环境变量
+            if original_ak is not None:
+                os.environ["AK"] = original_ak
+                logger.info("恢复原始环境变量 AK")
+            elif "AK" in os.environ:
+                del os.environ["AK"]
+                logger.info("删除环境变量 AK")
 
 # 创建全局管理器
 manager = SessionManager()
 
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """WebSocket 端点"""
-    await manager.connect_client(websocket)
+    # 提取AK信息
+    access_key, _ = get_ak_info_from_request(websocket.headers)
+    
+    await manager.connect_client(websocket, access_key)
     
     # 获取该连接的上下文
     context = manager.active_connections.get(websocket)
@@ -781,10 +803,6 @@ async def websocket_endpoint(websocket: WebSocket):
                         "content": "删除会话失败"
                     })
                     
-            elif message_type == "shell_command":
-                command = data.get("command", "").strip()
-                if command:
-                    await execute_shell_command(command, context)
                 
     except WebSocketDisconnect:
         manager.disconnect_client(websocket)
@@ -937,156 +955,6 @@ async def get_config():
         "websocket": agentconfig.get_websocket_config()
     })
 
-# 安全的命令白名单
-SAFE_COMMANDS = {
-    'ls', 'pwd', 'cd', 'cat', 'echo', 'grep', 'find', 'head', 'tail', 
-    'wc', 'sort', 'uniq', 'diff', 'cp', 'mv', 'mkdir', 'touch', 'date',
-    'whoami', 'hostname', 'uname', 'df', 'du', 'ps', 'top', 'which',
-    'git', 'npm', 'python', 'pip', 'node', 'yarn', 'curl', 'wget',
-    'tree', 'clear', 'history'
-}
-
-# 危险命令黑名单
-DANGEROUS_COMMANDS = {
-    'rm', 'rmdir', 'kill', 'killall', 'shutdown', 'reboot', 'sudo',
-    'su', 'chmod', 'chown', 'dd', 'format', 'mkfs', 'fdisk', 'apt',
-    'yum', 'brew', 'systemctl', 'service', 'docker', 'kubectl'
-}
-
-async def execute_shell_command(command: str, context: ConnectionContext):
-    """安全地执行 shell 命令（保持状态）"""
-    try:
-        # 使用连接上下文中的shell状态
-        shell_state = context.shell_state
-        websocket = context.websocket
-        
-        # 解析命令
-        try:
-            cmd_parts = shlex.split(command)
-        except ValueError as e:
-            await websocket.send_json({
-                "type": "shell_error",
-                "error": f"命令解析错误: {str(e)}"
-            })
-            return
-            
-        if not cmd_parts:
-            return
-            
-        # 获取基础命令
-        base_cmd = cmd_parts[0]
-        
-        # 检查是否是危险命令
-        if base_cmd in DANGEROUS_COMMANDS:
-            await websocket.send_json({
-                "type": "shell_error",
-                "error": f"安全限制: 命令 '{base_cmd}' 已被禁用"
-            })
-            return
-            
-        # 对于不在白名单中的命令，给出警告但仍然执行
-        if base_cmd not in SAFE_COMMANDS:
-            logger.warning(f"执行非白名单命令: {base_cmd}")
-        
-        # 处理cd命令
-        if base_cmd == "cd":
-            try:
-                if len(cmd_parts) == 1:
-                    # cd without args goes to home
-                    new_dir = os.path.expanduser("~")
-                else:
-                    new_dir = os.path.expanduser(cmd_parts[1])
-                
-                # 处理相对路径
-                if not os.path.isabs(new_dir):
-                    new_dir = os.path.join(shell_state["cwd"], new_dir)
-                
-                new_dir = os.path.normpath(new_dir)
-                
-                if os.path.isdir(new_dir):
-                    shell_state["cwd"] = new_dir
-                    await websocket.send_json({
-                        "type": "shell_output",
-                        "output": f"Changed directory to: {new_dir}\n"
-                    })
-                else:
-                    await websocket.send_json({
-                        "type": "shell_error",
-                        "error": f"cd: no such file or directory: {cmd_parts[1]}\n"
-                    })
-            except Exception as e:
-                await websocket.send_json({
-                    "type": "shell_error",
-                    "error": f"cd: {str(e)}\n"
-                })
-            return
-        
-        # 处理pwd命令
-        if base_cmd == "pwd":
-            await websocket.send_json({
-                "type": "shell_output",
-                "output": f"{shell_state['cwd']}\n"
-            })
-            return
-        
-        # 创建进程（使用保存的工作目录）
-        logger.info(f"执行命令: {command} 在目录: {shell_state['cwd']}")
-        process = await asyncio.create_subprocess_shell(
-            command,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=shell_state["cwd"],
-            env=shell_state["env"]
-        )
-        
-        # 设置超时时间（30秒）
-        try:
-            stdout, stderr = await asyncio.wait_for(
-                process.communicate(),
-                timeout=30.0
-            )
-            
-            # 发送标准输出
-            if stdout:
-                output = stdout.decode('utf-8', errors='replace')
-                logger.info(f"命令输出: {len(output)} 字符")
-                await websocket.send_json({
-                    "type": "shell_output",
-                    "output": output
-                })
-            
-            # 发送错误输出
-            if stderr:
-                error = stderr.decode('utf-8', errors='replace')
-                logger.warning(f"命令错误: {error}")
-                await websocket.send_json({
-                    "type": "shell_error",
-                    "error": error
-                })
-                
-            # 如果没有输出
-            if not stdout and not stderr:
-                logger.info("命令执行完成，无输出")
-                await websocket.send_json({
-                    "type": "shell_output",
-                    "output": "命令执行完成（无输出）\n"
-                })
-                
-        except asyncio.TimeoutError:
-            # 超时，终止进程
-            process.terminate()
-            await process.wait()
-            await websocket.send_json({
-                "type": "shell_error",
-                "error": "命令执行超时（30秒）"
-            })
-            
-    except Exception as e:
-        logger.error(f"执行命令时出错: {e}")
-        await websocket.send_json({
-            "type": "shell_error",
-            "error": f"执行命令失败: {str(e)}"
-        })
 
 # 挂载静态文件服务
 # 获取 UI 静态文件目录
