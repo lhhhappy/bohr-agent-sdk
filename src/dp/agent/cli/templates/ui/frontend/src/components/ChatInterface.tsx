@@ -24,7 +24,7 @@ const ChatInterface: React.FC = () => {
   const [fileTree, setFileTree] = useState<FileNode[]>([])
   const [showFileExplorer, setShowFileExplorer] = useState(true) 
   const [projectId, setProjectId] = useState<string>('')
-  const [showProjectIdInput, setShowProjectIdInput] = useState(false)
+  const [showProjectIdInput, setShowProjectIdInput] = useState(true)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const messageIdef = useRef<Set<string>>(new Set())
