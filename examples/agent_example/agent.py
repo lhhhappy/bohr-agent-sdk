@@ -1,19 +1,10 @@
 import os
-import asyncio
 from google.adk.agents import Agent
 from google.adk.models.lite_llm import LiteLlm
-from google.adk.tools.mcp_tool.mcp_toolset import MCPToolset
-from google.adk.tools.mcp_tool.mcp_session_manager import SseServerParams
-from google.adk.runners import InMemoryRunner
-from google.adk.sessions import InMemorySessionService
-from google.adk.tools import FunctionTool
-from typing import Any, Dict
-import openai
 from dotenv import load_dotenv
 import arxiv
 import json
 from typing import List
-import time
 
 PAPER_DIR = "output/papers"
 
@@ -108,39 +99,21 @@ def extract_info(paper_id: str) -> str:
 
     return f"There's no saved information related to paper {paper_id}."
 
-# Create agent
-
-def show_ak():
-    """
-    Show the AK
-    Args:
-        None
-    Returns:
-        The AK
-    """
-    ak = os.getenv('AK', '')
-    print(f"AK: {ak}")
-    if ak:
-        return f"My AK is: {ak}"
-    else:
-        return "I don't have an AK (temporary user)"
-
 # 不要在模块级别创建 agent，而是提供一个工厂函数
-def create_agent(ak: str = None):
-    """动态创建 agent
+def create_agent(ak: str = None, app_key: str = None, project_id: int = None):
+    """动态创建 agent - SDK 标准接口
     
     Args:
-        ak: 可选的 AK 参数，如果不提供则从环境变量读取
+        ak: 可选的 AK 参数
+        app_key: 可选的 app_key 参数（这个例子中未使用）
+        project_id: 可选的 project_id 参数（这个例子中未使用）
     """
     
-    print(f"Creating agent with AK: {ak[:8] if ak else 'None'}...")
-    
-    # 如果没有提供AK，从环境变量获取
-    if not ak:
-        ak = os.getenv('AK', '')
     
     # 保存AK到闭包中
     agent_ak = ak
+    agent_app_key = app_key
+    agent_project_id = project_id
     
     def show_ak():
         """
@@ -156,13 +129,35 @@ def create_agent(ak: str = None):
         else:
             return "I don't have an AK (temporary user)"
     
+    def show_app_key():
+        """
+        Show the app_key
+        Args:
+            None
+        Returns:
+            The app_key
+        """
+        if agent_app_key:
+            return f"My app_key is: {agent_app_key}"
+        else:
+            return "I don't have an app_key (temporary user)"
+        
+    def show_project_id():
+        """
+        Show the project_id
+        Args:
+            None
+        Returns:
+            The project_id
+        """
+        if agent_project_id:
+            return f"My project_id is: {agent_project_id}"
+        else:
+            return "I don't have an project_id (temporary user)"
+    
     return Agent(
         name="mcp_sse_agent",
         model=LiteLlm(model=model_type),
         instruction="You are an intelligent assistant capable of using external tools.",
-        tools=[show_ak]
+        tools=[show_ak, show_app_key, show_project_id]
     )
-
-# 保留一个默认的 root_agent 以保持向后兼容
-# 注意：这里不传入AK，让默认agent不包含任何AK信息
-root_agent = create_agent(ak="")

@@ -23,6 +23,8 @@ const ChatInterface: React.FC = () => {
   const [isCreatingSession, setIsCreatingSession] = useState(false)
   const [fileTree, setFileTree] = useState<FileNode[]>([])
   const [showFileExplorer, setShowFileExplorer] = useState(true) 
+  const [projectId, setProjectId] = useState<string>('')
+  const [showProjectIdInput, setShowProjectIdInput] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const messageIdef = useRef<Set<string>>(new Set())
@@ -30,6 +32,15 @@ const ChatInterface: React.FC = () => {
   
   // Load agent configuration
   const { config } = useAgentConfig()
+
+  // Show/hide project ID input based on user type
+  useEffect(() => {
+    if (config?.user_type === 'registered') {
+      setShowProjectIdInput(true)
+    } else {
+      setShowProjectIdInput(false)
+    }
+  }, [config])
 
   useEffect(() => {
     scrollToBottom()
@@ -121,6 +132,14 @@ const ChatInterface: React.FC = () => {
         // WebSocket connected
         setConnectionStatus('connected')
         setWs(websocket)
+        
+        // Send project ID if we have one (for registered users)
+        if (projectId) {
+          websocket.send(JSON.stringify({
+            type: 'set_project_id',
+            project_id: parseInt(projectId)
+          }))
+        }
       }
       
       websocket.onmessage = (event) => {
@@ -178,6 +197,18 @@ const ChatInterface: React.FC = () => {
       }
     }, 100)
   }
+
+  // Handle project ID change
+  const handleProjectIdChange = useCallback((value: string) => {
+    setProjectId(value)
+    // Send to server if connected
+    if (ws && connectionStatus === 'connected' && value) {
+      ws.send(JSON.stringify({
+        type: 'set_project_id',
+        project_id: parseInt(value)
+      }))
+    }
+  }, [ws, connectionStatus])
 
   // Session management functions
   const handleCreateSession = useCallback(async () => {
@@ -403,6 +434,21 @@ const ChatInterface: React.FC = () => {
             </h1>
           </div>
           <div className="flex items-center gap-3">
+            {showProjectIdInput && (
+              <div className="flex items-center gap-2">
+                <label htmlFor="projectId" className="text-sm font-medium text-gray-600 dark:text-gray-300">
+                  Project ID:
+                </label>
+                <input
+                  id="projectId"
+                  type="text"
+                  value={projectId}
+                  onChange={(e) => handleProjectIdChange(e.target.value)}
+                  placeholder="输入 Project ID"
+                  className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            )}
             <button
               onClick={() => setShowFileExplorer(!showFileExplorer)}
               className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors btn-animated"

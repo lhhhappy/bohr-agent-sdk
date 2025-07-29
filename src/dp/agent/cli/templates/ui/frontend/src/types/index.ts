@@ -60,6 +60,7 @@ export interface AgentConfig {
     port: number
     host: string[]
   }
+  user_type?: 'registered' | 'temporary'
 }
 
 // WebSocket Message Types

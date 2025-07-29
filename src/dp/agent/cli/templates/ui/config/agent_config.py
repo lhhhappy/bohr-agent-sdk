@@ -61,11 +61,13 @@ class AgentConfig:
             }
         }
     
-    def get_agent(self, ak: str = None):
+    def get_agent(self, ak: str = None, app_key: str = None, project_id: int = None):
         """Dynamically import and return the configured agent
         
         Args:
             ak: Optional access key to pass to the agent
+            app_key: Optional app key to pass to the agent
+            project_id: Optional project ID to pass to the agent
         """
         agentconfig = self.config.get("agent", {})
         module_name = agentconfig.get("module", "agent.subagent")
@@ -77,14 +79,20 @@ class AgentConfig:
             # 检查是否有 create_agent 函数（推荐的方式）
             if hasattr(module, 'create_agent'):
                 # 使用工厂函数创建新的 agent 实例
-                # 检查函数是否接受 ak 参数
+                # 检查函数接受哪些参数
                 import inspect
                 sig = inspect.signature(module.create_agent)
+                params = {}
+                
+                # 只传递函数签名中存在的参数
                 if 'ak' in sig.parameters:
-                    return module.create_agent(ak=ak)
-                else:
-                    # 后向兼容：不接受 ak 参数
-                    return module.create_agent()
+                    params['ak'] = ak
+                if 'app_key' in sig.parameters:
+                    params['app_key'] = app_key
+                if 'project_id' in sig.parameters:
+                    params['project_id'] = project_id
+                
+                return module.create_agent(**params)
             else:
                 # 后向兼容：直接返回模块级别的 agent
                 return getattr(module, agentname)

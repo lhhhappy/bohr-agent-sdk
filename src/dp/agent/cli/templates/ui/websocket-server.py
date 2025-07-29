@@ -259,9 +259,11 @@ class FileChangeHandler(FileSystemEventHandler):
 
 class ConnectionContext:
     """每个WebSocket连接的独立上下文"""
-    def __init__(self, websocket: WebSocket, access_key: str = ""):
+    def __init__(self, websocket: WebSocket, access_key: str = "", app_key: str = ""):
         self.websocket = websocket
         self.access_key = access_key  # 存储该连接的AK
+        self.app_key = app_key  # 存储该连接的app_key
+        self.project_id: Optional[int] = None  # 从前端获取的project_id
         self.sessions: Dict[str, Session] = {}
         self.runners: Dict[str, Runner] = {}
         self.session_services: Dict[str, InMemorySessionService] = {}
@@ -526,7 +528,9 @@ class SessionManager:
             user_agent = await loop.run_in_executor(
                 None, 
                 agentconfig.get_agent, 
-                context.access_key if context.access_key else ""
+                context.access_key if context.access_key else "",
+                context.app_key if context.app_key else "",
+                context.project_id if context.project_id else None
             )
             
             session_service = InMemorySessionService()
@@ -591,12 +595,12 @@ class SessionManager:
             return True
         return False
     
-    async def connect_client(self, websocket: WebSocket, access_key: str = ""):
+    async def connect_client(self, websocket: WebSocket, access_key: str = "", app_key: str = ""):
         """连接新客户端"""
         await websocket.accept()
         
-        # 为新连接创建独立的上下文，包含AK
-        context = ConnectionContext(websocket, access_key)
+        # 为新连接创建独立的上下文，包含AK和app_key
+        context = ConnectionContext(websocket, access_key, app_key)
         self.active_connections[websocket] = context
         
         # 加载历史会话（如果有AK）
@@ -957,10 +961,10 @@ manager = SessionManager()
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """WebSocket 端点"""
-    # 提取AK信息
-    access_key, _ = get_ak_info_from_request(websocket.headers)
+    # 提取AK和app_key信息
+    access_key, app_key = get_ak_info_from_request(websocket.headers)
     
-    await manager.connect_client(websocket, access_key)
+    await manager.connect_client(websocket, access_key, app_key)
     
     # 获取该连接的上下文
     context = manager.active_connections.get(websocket)
@@ -1022,6 +1026,20 @@ async def websocket_endpoint(websocket: WebSocket):
                         "content": "删除会话失败"
                     })
                     
+            elif message_type == "set_project_id":
+                # 设置 project_id
+                project_id = data.get("project_id")
+                if project_id is not None:
+                    context.project_id = project_id
+                    logger.info(f"设置 project_id: {project_id} for user {context.user_id}")
+                    
+                    # 如果需要，可以重新初始化当前会话的 runner
+                    if context.current_session_id and context.access_key:
+                        await manager._init_session_runner(context, context.current_session_id)
+                        await websocket.send_json({
+                            "type": "success",
+                            "content": f"Project ID 已设置为: {project_id}"
+                        })
                 
     except WebSocketDisconnect:
         await manager.disconnect_client(websocket)
