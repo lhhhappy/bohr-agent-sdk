@@ -8,7 +8,7 @@
         "title": "Paper Research Assistant"
       },
       "server": {
-        "port": 50002,
+        "port": 50001,
         "host": ["localhost", "127.0.0.1"]
       },
       "files": {
