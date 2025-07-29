@@ -138,9 +138,13 @@ class AgentConfig:
             user_hosts = [user_hosts]
         elif not isinstance(user_hosts, list):
             user_hosts = []
-            
-        # 合并默认主机和用户定义的额外主机
-        all_hosts = list(set(default_hosts + user_hosts))  # 使用 set 去重
+        
+        # 如果用户配置了 "*"，则允许所有主机
+        if "*" in user_hosts:
+            all_hosts = ["*"]
+        else:
+            # 合并默认主机和用户定义的额外主机
+            all_hosts = list(set(default_hosts + user_hosts))  # 使用 set 去重
         
         # 使用环境变量或配置的端口，最后使用默认端口
         default_port = int(os.environ.get('AGENT_SERVER_PORT', '50002'))

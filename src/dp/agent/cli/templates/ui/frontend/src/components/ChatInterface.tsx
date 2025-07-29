@@ -24,7 +24,9 @@ const ChatInterface: React.FC = () => {
   const [fileTree, setFileTree] = useState<FileNode[]>([])
   const [showFileExplorer, setShowFileExplorer] = useState(true) 
   const [projectId, setProjectId] = useState<string>('')
+  const [tempProjectId, setTempProjectId] = useState<string>('')
   const [showProjectIdInput, setShowProjectIdInput] = useState(true)
+  const [isProjectIdSet, setIsProjectIdSet] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const messageIdef = useRef<Set<string>>(new Set())
@@ -138,6 +140,7 @@ const ChatInterface: React.FC = () => {
             type: 'set_project_id',
             project_id: parseInt(projectId)
           }))
+          setIsProjectIdSet(true)
         }
       }
       
@@ -197,17 +200,22 @@ const ChatInterface: React.FC = () => {
     }, 100)
   }
 
-  // Handle project ID change
-  const handleProjectIdChange = useCallback((value: string) => {
-    setProjectId(value)
-    // Send to server if connected
-    if (ws && connectionStatus === 'connected' && value) {
-      ws.send(JSON.stringify({
-        type: 'set_project_id',
-        project_id: parseInt(value)
-      }))
+  // Handle project ID confirmation
+  const handleProjectIdConfirm = useCallback(() => {
+    if (tempProjectId && tempProjectId !== projectId) {
+      setProjectId(tempProjectId)
+      setIsProjectIdSet(true)
+      // Send to server if connected
+      if (ws && connectionStatus === 'connected') {
+        ws.send(JSON.stringify({
+          type: 'set_project_id',
+          project_id: parseInt(tempProjectId)
+        }))
+        // Show confirmation message
+        alert('Project ID 已更新，Agent 正在重新初始化...')
+      }
     }
-  }, [ws, connectionStatus])
+  }, [ws, connectionStatus, tempProjectId, projectId])
 
   // Session management functions
   const handleCreateSession = useCallback(async () => {
@@ -441,11 +449,25 @@ const ChatInterface: React.FC = () => {
                 <input
                   id="projectId"
                   type="text"
-                  value={projectId}
-                  onChange={(e) => handleProjectIdChange(e.target.value)}
-                  placeholder="输入 Project ID"
-                  className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={tempProjectId || projectId}
+                  onChange={(e) => setTempProjectId(e.target.value)}
+                  placeholder="如果你需要在Bohrium上提交任务，请输入项目ID"
+                  className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 w-64"
+                  disabled={isProjectIdSet && projectId === tempProjectId}
                 />
+                {tempProjectId && tempProjectId !== projectId && (
+                  <button
+                    onClick={handleProjectIdConfirm}
+                    className="px-3 py-1.5 text-sm font-medium text-white bg-blue-500 hover:bg-blue-600 rounded-lg transition-colors"
+                  >
+                    确认
+                  </button>
+                )}
+                {isProjectIdSet && projectId && (
+                  <span className="text-sm text-green-600 dark:text-green-400">
+                    ✓ 已设置
+                  </span>
+                )}
               </div>
             )}
             <button

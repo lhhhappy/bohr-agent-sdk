@@ -1304,6 +1304,19 @@ if static_dir.exists():
 else:
     print(f"⚠️  静态文件目录不存在: {static_dir}")
 
+import signal
+import socket
+
+def check_port_available(port):
+    """检查端口是否可用"""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.bind(('', port))
+        sock.close()
+        return True
+    except OSError:
+        return False
+
 if __name__ == "__main__":
     print("🚀 启动 Agent WebSocket 服务器...")
     # 统一使用 server 配置
@@ -1313,9 +1326,22 @@ if __name__ == "__main__":
     hosts = server_config.get('host', ['localhost'])
     display_host = hosts[0] if isinstance(hosts, list) else hosts
     
+    # 检查端口是否可用
+    if not check_port_available(port):
+        print(f"⚠️  端口 {port} 已被占用，请先关闭占用该端口的进程")
+        sys.exit(1)
+    
     print("📡 使用 Session 模式运行 rootagent")
     print(f"🌐 服务器地址: http://{display_host}:{port}")
     print(f"🔌 WebSocket 端点: ws://{display_host}:{port}/ws")
+    
+    # 设置信号处理器以便优雅关闭
+    def signal_handler(signum, frame):
+        print("\n🛑 正在关闭服务器...")
+        sys.exit(0)
+    
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
     
     # uvicorn 始终监听 0.0.0.0 以支持所有配置的主机
     uvicorn.run(

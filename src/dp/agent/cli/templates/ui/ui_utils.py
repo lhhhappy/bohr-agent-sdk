@@ -25,7 +25,7 @@ class UIConfigManager:
         },
         "server": {
             "port": int(os.environ.get('AGENT_SERVER_PORT', '50002')),
-            "host": ["localhost", "127.0.0.1"]
+            "host": ["*"]  # 默认允许所有主机访问
         }
     }
     
@@ -223,8 +223,10 @@ class UIProcessManager:
         """清理所有进程"""
         if not self.processes:
             return
-            
-        # First attempt to terminate all processes
+        
+        click.echo("\n🛑 正在停止所有进程...")
+        
+        # First attempt to terminate all processes gracefully
         for process in self.processes:
             if process and process.poll() is None:
                 try:
@@ -232,18 +234,27 @@ class UIProcessManager:
                 except:
                     pass
         
-        # Give processes a short time to terminate
-        time.sleep(0.5)
+        # Give processes time to terminate gracefully
+        time.sleep(1)
         
         # Force kill any remaining processes
         for process in self.processes:
             if process and process.poll() is None:
                 try:
-                    process.kill()
-                    process.wait(timeout=0.5)
+                    if sys.platform == "win32":
+                        # Windows specific kill
+                        subprocess.run(["taskkill", "/F", "/PID", str(process.pid)], capture_output=True)
+                    else:
+                        # Unix-like systems
+                        process.kill()
+                    process.wait(timeout=1)
                 except:
                     pass
         
         self.processes.clear()
+        
+        # 等待端口释放
+        time.sleep(0.5)
+        click.echo("✅ 所有进程已停止")
 
 
