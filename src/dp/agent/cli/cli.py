@@ -202,21 +202,38 @@ def agent(ui, config, port, module, agent_name, dev):
     
     agent_module = config_manager.config['agent']['module']
     
-    # 将模块路径转换为文件路径来检查
-    module_parts = agent_module.split('.')
-    module_dir = current_dir / Path(*module_parts[:-1])
-    module_file = current_dir / Path(*module_parts[:-1]) / f"{module_parts[-1]}.py"
-    module_init = module_dir / "__init__.py"
-    
-    # 检查模块是否存在
-    if not (module_dir.exists() or module_file.exists()):
-        click.echo(f"错误: 找不到 {agent_module} 模块。")
-        click.echo(f"尝试查找: {module_dir} 或 {module_file}")
-        click.echo("\n请确保:")
-        click.echo("1. 您已经创建了 agent 模块")
-        click.echo("2. 在 config.json 中正确配置了 'agent.module' 路径")
-        click.echo("3. 或使用 --module 参数指定正确的模块路径")
-        sys.exit(1)
+    # 检查是否是文件路径（包含 / 或 \ 或以 .py 结尾）
+    if '/' in agent_module or '\\' in agent_module or agent_module.endswith('.py'):
+        # 作为文件路径处理
+        file_path = Path(agent_module)
+        
+        # 如果是相对路径，基于当前目录解析
+        if not file_path.is_absolute():
+            file_path = current_dir / file_path
+        
+        # 检查文件是否存在
+        if not file_path.exists():
+            click.echo(f"错误: 找不到 agent 文件: {file_path}")
+            click.echo("\n请确保:")
+            click.echo("1. 文件路径正确")
+            click.echo("2. 文件存在并可访问")
+            sys.exit(1)
+    else:
+        # 作为模块路径处理（原有逻辑）
+        module_parts = agent_module.split('.')
+        module_dir = current_dir / Path(*module_parts[:-1])
+        module_file = current_dir / Path(*module_parts[:-1]) / f"{module_parts[-1]}.py"
+        module_init = module_dir / "__init__.py"
+        
+        # 检查模块是否存在
+        if not (module_dir.exists() or module_file.exists()):
+            click.echo(f"错误: 找不到 {agent_module} 模块。")
+            click.echo(f"尝试查找: {module_dir} 或 {module_file}")
+            click.echo("\n请确保:")
+            click.echo("1. 您已经创建了 agent 模块")
+            click.echo("2. 在 config.json 中正确配置了 'agent.module' 路径")
+            click.echo("3. 或使用 --module 参数指定正确的模块路径")
+            sys.exit(1)
     
     # 使用内置的 UI 模板
     ui_dir = Path(__file__).parent / "templates" / "ui"

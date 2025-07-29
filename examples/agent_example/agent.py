@@ -123,7 +123,6 @@ def create_agent(ak: str = None, app_key: str = None, project_id: int = None):
         Returns:
             The AK
         """
-        # 使用闭包中保存的AK
         if agent_ak:
             return f"My AK is: {agent_ak}"
         else:
@@ -159,5 +158,5 @@ def create_agent(ak: str = None, app_key: str = None, project_id: int = None):
         name="mcp_sse_agent",
         model=LiteLlm(model=model_type),
         instruction="You are an intelligent assistant capable of using external tools.",
-        tools=[show_ak, show_app_key, show_project_id]
+        tools=[show_ak, show_app_key, show_project_id, search_papers, extract_info]
     )

@@ -1035,25 +1035,33 @@ async def websocket_endpoint(websocket: WebSocket):
                 # 设置 project_id
                 project_id = data.get("project_id")
                 if project_id is not None:
-                    context.project_id = project_id
-                    logger.info(f"设置 project_id: {project_id} for user {context.user_id}")
-                    
-                    # 只重新初始化当前会话的 runner
-                    if context.current_session_id:
-                        logger.info(f"为当前会话 {context.current_session_id} 重新初始化 runner，project_id: {project_id}")
-                        # 清理当前会话的旧 runner
-                        if context.current_session_id in context.runners:
-                            del context.runners[context.current_session_id]
-                        if context.current_session_id in context.session_services:
-                            del context.session_services[context.current_session_id]
-                        # 重新初始化
-                        await manager._init_session_runner(context, context.current_session_id)
-                    
-                    await websocket.send_json({
-                        "type": "project_id_set",
-                        "project_id": project_id,
-                        "content": f"Project ID 已设置为: {project_id}"
-                    })
+                    try:
+                        # 确保 project_id 是整数
+                        context.project_id = int(project_id)
+                        logger.info(f"设置 project_id: {context.project_id} for user {context.user_id}")
+                        
+                        # 只重新初始化当前会话的 runner
+                        if context.current_session_id:
+                            logger.info(f"为当前会话 {context.current_session_id} 重新初始化 runner，project_id: {context.project_id}")
+                            # 清理当前会话的旧 runner
+                            if context.current_session_id in context.runners:
+                                del context.runners[context.current_session_id]
+                            if context.current_session_id in context.session_services:
+                                del context.session_services[context.current_session_id]
+                            # 重新初始化
+                            await manager._init_session_runner(context, context.current_session_id)
+                        
+                        await websocket.send_json({
+                            "type": "project_id_set",
+                            "project_id": context.project_id,
+                            "content": f"Project ID 已设置为: {context.project_id}"
+                        })
+                    except ValueError:
+                        logger.error(f"无效的 project_id 值: {project_id}")
+                        await websocket.send_json({
+                            "type": "error",
+                            "content": f"无效的 Project ID: {project_id}，必须是整数"
+                        })
                 
     except WebSocketDisconnect:
         await manager.disconnect_client(websocket)
@@ -1313,7 +1321,6 @@ if static_dir.exists():
 else:
     print(f"⚠️  静态文件目录不存在: {static_dir}")
 
-import signal
 import socket
 
 def check_port_available(port):
@@ -1343,14 +1350,7 @@ if __name__ == "__main__":
     print("📡 使用 Session 模式运行 rootagent")
     print(f"🌐 服务器地址: http://{display_host}:{port}")
     print(f"🔌 WebSocket 端点: ws://{display_host}:{port}/ws")
-    
-    # 设置信号处理器以便优雅关闭
-    def signal_handler(signum, frame):
-        print("\n🛑 正在关闭服务器...")
-        sys.exit(0)
-    
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
+    print("🛑 使用 Ctrl+C 优雅关闭服务器")
     
     # uvicorn 始终监听 0.0.0.0 以支持所有配置的主机
     uvicorn.run(

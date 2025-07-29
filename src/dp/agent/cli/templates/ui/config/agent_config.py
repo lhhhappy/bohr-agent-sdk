@@ -11,6 +11,7 @@ import sys
 from pathlib import Path
 from typing import Dict, Any
 import importlib
+import importlib.util
 
 class AgentConfig:
     def __init__(self, config_path: str = None):
@@ -70,11 +71,41 @@ class AgentConfig:
             project_id: Optional project ID to pass to the agent
         """
         agentconfig = self.config.get("agent", {})
-        module_name = agentconfig.get("module", "agent.subagent")
+        module_path = agentconfig.get("module", "agent.subagent")
         agentname = agentconfig.get("rootAgent", "rootagent")
         
         try:
-            module = importlib.import_module(module_name)
+            # 检查是否是文件路径（包含 / 或 \ 或以 .py 结尾）
+            if '/' in module_path or '\\' in module_path or module_path.endswith('.py'):
+                # 作为文件路径处理
+                file_path = Path(module_path)
+                
+                # 如果是相对路径，基于用户工作目录解析
+                if not file_path.is_absolute():
+                    user_working_dir = os.environ.get('USER_WORKING_DIR', os.getcwd())
+                    file_path = Path(user_working_dir) / file_path
+                
+                # 确保文件存在
+                if not file_path.exists():
+                    raise ImportError(f"Agent module file not found: {file_path}")
+                
+                # 从文件路径创建唯一的模块名，包含路径信息避免冲突
+                # 例如: /path/to/agent.py -> path_to_agent
+                module_name = str(file_path).replace('/', '_').replace('\\', '_').replace('.py', '').replace('.', '_')
+                # 确保模块名是有效的 Python 标识符
+                module_name = 'agent_' + module_name.strip('_')
+                
+                # 使用 importlib.util 从文件加载模块
+                spec = importlib.util.spec_from_file_location(module_name, str(file_path))
+                if spec is None or spec.loader is None:
+                    raise ImportError(f"Cannot load module from file: {file_path}")
+                
+                module = importlib.util.module_from_spec(spec)
+                sys.modules[module_name] = module  # 可选：将模块添加到 sys.modules
+                spec.loader.exec_module(module)
+            else:
+                # 作为模块路径处理（原有逻辑）
+                module = importlib.import_module(module_path)
             
             # 检查是否有 create_agent 函数（推荐的方式）
             if hasattr(module, 'create_agent'):
@@ -97,7 +128,7 @@ class AgentConfig:
                 # 后向兼容：直接返回模块级别的 agent
                 return getattr(module, agentname)
         except (ImportError, AttributeError) as e:
-            raise ImportError(f"Failed to load agent {agentname} from {module_name}: {e}")
+            raise ImportError(f"Failed to load agent {agentname} from {module_path}: {e}")
     
     def get_ui_config(self) -> Dict[str, Any]:
         """Get UI-specific configuration"""
