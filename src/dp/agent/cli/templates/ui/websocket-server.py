@@ -1038,13 +1038,22 @@ async def websocket_endpoint(websocket: WebSocket):
                     context.project_id = project_id
                     logger.info(f"设置 project_id: {project_id} for user {context.user_id}")
                     
-                    # 如果需要，可以重新初始化当前会话的 runner
-                    if context.current_session_id and context.access_key:
+                    # 只重新初始化当前会话的 runner
+                    if context.current_session_id:
+                        logger.info(f"为当前会话 {context.current_session_id} 重新初始化 runner，project_id: {project_id}")
+                        # 清理当前会话的旧 runner
+                        if context.current_session_id in context.runners:
+                            del context.runners[context.current_session_id]
+                        if context.current_session_id in context.session_services:
+                            del context.session_services[context.current_session_id]
+                        # 重新初始化
                         await manager._init_session_runner(context, context.current_session_id)
-                        await websocket.send_json({
-                            "type": "success",
-                            "content": f"Project ID 已设置为: {project_id}"
-                        })
+                    
+                    await websocket.send_json({
+                        "type": "project_id_set",
+                        "project_id": project_id,
+                        "content": f"Project ID 已设置为: {project_id}"
+                    })
                 
     except WebSocketDisconnect:
         await manager.disconnect_client(websocket)

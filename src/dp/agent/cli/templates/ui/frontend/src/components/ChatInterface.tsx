@@ -27,6 +27,7 @@ const ChatInterface: React.FC = () => {
   const [tempProjectId, setTempProjectId] = useState<string>('')
   const [showProjectIdInput, setShowProjectIdInput] = useState(true)
   const [isProjectIdSet, setIsProjectIdSet] = useState(false)
+  const [projectIdStatus, setProjectIdStatus] = useState<'idle' | 'updating' | 'success'>('idle')
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const messageIdef = useRef<Set<string>>(new Set())
@@ -205,14 +206,21 @@ const ChatInterface: React.FC = () => {
     if (tempProjectId && tempProjectId !== projectId) {
       setProjectId(tempProjectId)
       setIsProjectIdSet(true)
+      setProjectIdStatus('updating')
       // Send to server if connected
       if (ws && connectionStatus === 'connected') {
         ws.send(JSON.stringify({
           type: 'set_project_id',
           project_id: parseInt(tempProjectId)
         }))
-        // Show confirmation message
-        alert('Project ID 已更新，Agent 正在重新初始化...')
+        // Show success status after a short delay
+        setTimeout(() => {
+          setProjectIdStatus('success')
+          // Reset to idle after showing success
+          setTimeout(() => {
+            setProjectIdStatus('idle')
+          }, 2000)
+        }, 500)
       }
     }
   }, [ws, connectionStatus, tempProjectId, projectId])
@@ -463,9 +471,19 @@ const ChatInterface: React.FC = () => {
                     确认
                   </button>
                 )}
-                {isProjectIdSet && projectId && (
+                {projectIdStatus === 'updating' && (
+                  <span className="text-sm text-blue-600 dark:text-blue-400">
+                    正在更新...
+                  </span>
+                )}
+                {projectIdStatus === 'success' && (
                   <span className="text-sm text-green-600 dark:text-green-400">
-                    ✓ 已设置
+                    ✓ 更新成功
+                  </span>
+                )}
+                {projectIdStatus === 'idle' && isProjectIdSet && projectId && (
+                  <span className="text-sm text-gray-600 dark:text-gray-400">
+                    已设置: {projectId}
                   </span>
                 )}
               </div>
