@@ -169,6 +169,11 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
 class HostValidationMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         host = request.headers.get("host", "").split(":")[0]
+        # 如果允许列表中包含 "*"，则允许所有主机
+        if "*" in allowed_hosts:
+            response = await call_next(request)
+            return response
+        # 否则检查主机是否在允许列表中
         if host and host not in allowed_hosts:
             logger.warning(f"拒绝访问: Host '{host}' 不在允许列表中")
             return PlainTextResponse(

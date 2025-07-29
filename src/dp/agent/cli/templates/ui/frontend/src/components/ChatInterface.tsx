@@ -37,11 +37,8 @@ const ChatInterface: React.FC = () => {
   useEffect(() => {
     console.log('Config:', config)
     console.log('User type:', config?.user_type)
-    if (config?.user_type === 'registered') {
-      setShowProjectIdInput(true)
-    } else {
-      setShowProjectIdInput(false)
-    }
+    // Always show project ID input for all users
+    setShowProjectIdInput(true)
   }, [config])
 
   useEffect(() => {
