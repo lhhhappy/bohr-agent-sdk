@@ -149,7 +149,6 @@ def create_agent(ak: str = None, app_key: str = None, project_id: int = None):
         Returns:
             The project_id
         """
-        print(f"agent_project_id_type: {type(agent_project_id)}")
         if agent_project_id:
             return f"My project_id is: {agent_project_id}, type: {type(agent_project_id)}"
         else:
