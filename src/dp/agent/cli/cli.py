@@ -8,6 +8,20 @@ import signal
 import uuid
 import requests
 
+# 加载 .env 文件（如果存在）
+try:
+    from dotenv import load_dotenv
+    # 查找 .env 文件：先在当前目录，再在项目根目录
+    env_file = Path('.env')
+    if not env_file.exists():
+        # 尝试在包的根目录查找
+        env_file = Path(__file__).parent.parent.parent.parent.parent / '.env'
+    if env_file.exists():
+        load_dotenv(env_file)
+except ImportError:
+    # dotenv 未安装，忽略
+    pass
+
 from ..server.storage import storage_dict
 from .templates.ui.ui_utils import UIConfigManager, UIProcessManager
 
@@ -235,10 +249,32 @@ def agent(ui, config, port, module, agent_name, dev):
             click.echo("3. 或使用 --module 参数指定正确的模块路径")
             sys.exit(1)
     
-    # 使用内置的 UI 模板
-    ui_dir = Path(__file__).parent / "templates" / "ui"
+    # 智能检测 UI 模板路径
+    # 1. 优先使用环境变量指定的路径
+    if os.environ.get('UI_TEMPLATE_DIR'):
+        ui_dir = Path(os.environ.get('UI_TEMPLATE_DIR'))
+    else:
+        # 2. 检查是否在开发模式（editable install）
+        try:
+            # 尝试通过当前文件路径判断
+            current_file = Path(__file__).resolve()
+            
+            # 如果当前文件在 site-packages 中，说明是正常安装
+            if 'site-packages' in str(current_file):
+                # 使用安装包中的模板
+                ui_dir = Path(__file__).parent / "templates" / "ui"
+            else:
+                # 开发模式，使用源代码中的模板
+                ui_dir = current_file.parent / "templates" / "ui"
+                click.echo(f"🔧 检测到开发模式，使用源代码路径: {ui_dir}")
+                
+        except Exception:
+            # 降级到默认路径
+            ui_dir = Path(__file__).parent / "templates" / "ui"
+    
     if not ui_dir.exists():
-        click.echo("错误: 找不到内置 UI 模板。")
+        click.echo(f"错误: 找不到 UI 模板目录: {ui_dir}")
+        click.echo("提示: 可以通过环境变量 UI_TEMPLATE_DIR 指定模板路径")
         sys.exit(1)
     
     # 更新其他配置参数

@@ -12,6 +12,6 @@
         "host": ["localhost", "127.0.0.1","*"]
       },
       "files": {
-        "watchDirectories": []
+        "watchDirectories": ["./output"]
       }
     }

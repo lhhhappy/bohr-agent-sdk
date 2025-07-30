@@ -58,8 +58,25 @@ class SessionManager:
     async def _init_session_runner(self, context: ConnectionContext, session_id: str):
         """异步初始化会话的runner"""
         try:
+            # 检查是否有 project_id（可以从环境变量获取用于开发）
+            project_id = context.project_id
+            if not project_id:
+                # 尝试从环境变量获取（仅用于开发调试）
+                env_project_id = os.environ.get('BOHR_PROJECT_ID')
+                if env_project_id:
+                    try:
+                        project_id = int(env_project_id)
+                        context.project_id = project_id
+                        logger.info(f"从环境变量获取 project_id: {project_id}")
+                    except ValueError:
+                        logger.error(f"环境变量 BOHR_PROJECT_ID 值无效: {env_project_id}")
+            
+            # 如果仍然没有 project_id，记录警告但继续（让前端处理）
+            if not project_id:
+                logger.warning(f"会话 {session_id} 初始化时没有 project_id")
+            
             # 直接传递 AK 给 agent，避免使用环境变量
-            logger.info(f"开始为会话 {session_id} 创建 Runner，AK: {context.access_key[:8] if context.access_key else 'None'}...")
+            logger.info(f"开始为会话 {session_id} 创建 Runner，AK: {context.access_key[:8] if context.access_key else 'None'}，project_id: {project_id}...")
             
             # 在异步任务中创建agent，避免阻塞主线程
             # 确保传入正确的AK（如果是空字符串或None，agent应该知道这是临时用户）
@@ -69,7 +86,7 @@ class SessionManager:
                 agentconfig.get_agent, 
                 context.access_key if context.access_key else "",
                 context.app_key if context.app_key else "",
-                context.project_id if context.project_id else None
+                project_id
             )
             
             session_service = InMemorySessionService()
@@ -193,6 +210,13 @@ class SessionManager:
         if context.current_session_id:
             await self.send_session_messages(context, context.current_session_id)
         
+        # 发送 project_id 状态
+        if not context.project_id and not os.environ.get('BOHR_PROJECT_ID'):
+            await context.websocket.send_json({
+                "type": "require_project_id",
+                "content": "需要设置 Project ID 才能使用 Agent"
+            })
+        
     async def disconnect_client(self, websocket: WebSocket):
         """断开客户端连接"""
         if websocket in self.active_connections:
@@ -277,6 +301,14 @@ class SessionManager:
     
     async def process_message(self, context: ConnectionContext, message: str):
         """处理用户消息"""
+        # 首先检查是否有 project_id
+        if not context.project_id and not os.environ.get('BOHR_PROJECT_ID'):
+            await context.websocket.send_json({
+                "type": "error", 
+                "content": "🔒 请先选择您的项目"
+            })
+            return
+        
         if not context.current_session_id:
             await context.websocket.send_json({
                 "type": "error", 

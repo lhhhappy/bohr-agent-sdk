@@ -1,6 +1,7 @@
 """
 WebSocket 端点处理
 """
+import os
 import logging
 from fastapi import WebSocket
 from fastapi.websockets import WebSocketDisconnect
@@ -27,6 +28,21 @@ async def websocket_endpoint(websocket: WebSocket):
         logger.error("无法获取连接上下文")
         await websocket.close()
         return
+    
+    # 尝试从环境变量获取 project_id（用于开发）
+    env_project_id = os.environ.get('BOHR_PROJECT_ID')
+    if env_project_id and not context.project_id:
+        try:
+            context.project_id = int(env_project_id)
+            logger.info(f"从环境变量设置初始 project_id: {context.project_id}")
+            # 通知前端 project_id 已设置
+            await websocket.send_json({
+                "type": "project_id_set",
+                "project_id": context.project_id,
+                "content": f"Project ID 已从环境变量设置为: {context.project_id}"
+            })
+        except ValueError:
+            logger.error(f"环境变量 BOHR_PROJECT_ID 值无效: {env_project_id}")
         
     try:
         while True:
