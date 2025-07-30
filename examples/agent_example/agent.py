@@ -99,18 +99,17 @@ def extract_info(paper_id: str) -> str:
 
     return f"There's no saved information related to paper {paper_id}."
 
-# 不要在模块级别创建 agent，而是提供一个工厂函数
 def create_agent(ak: str = None, app_key: str = None, project_id: int = None):
     """动态创建 agent - SDK 标准接口
     
     Args:
+    
         ak: 可选的 AK 参数
-        app_key: 可选的 app_key 参数（这个例子中未使用）
-        project_id: 可选的 project_id 参数（这个例子中未使用）
+        app_key: 可选的 app_key 参数
+        project_id: 可选的 project_id 参数
+
     """
     
-    
-    # 保存AK到闭包中
     agent_ak = ak
     agent_app_key = app_key
     agent_project_id = project_id

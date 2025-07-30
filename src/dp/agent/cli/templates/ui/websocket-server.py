@@ -33,10 +33,6 @@ if __name__ == "__main__":
     hosts = server_config.get('host', ['localhost'])
     display_host = hosts[0] if isinstance(hosts, list) else hosts
     
-    # 检查端口是否可用
-    if not check_port_available(port):
-        print(f"⚠️  端口 {port} 已被占用，请先关闭占用该端口的进程")
-        sys.exit(1)
     
     # 创建应用
     app = create_app()
