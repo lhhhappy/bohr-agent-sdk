@@ -1,0 +1,18 @@
+{
+    "agent": {
+        "module": "/root/lh-build-your-agent/bohr-agent-sdk/examples/dpa_agent/agent.py",
+        "rootAgent": "root_agent",
+        "name": "DPA Agent",
+        "welcomeMessage": "I am an assistant helping you with computational research with DPA model."
+      },
+      "ui": {
+        "title": "DPA Agent"
+      },
+      "server": {
+        "port": 50001,
+        "host": ["localhost", "127.0.0.1", "*"]
+      },
+      "files": {
+        "watchDirectories": ["./output"]
+      }
+    }
