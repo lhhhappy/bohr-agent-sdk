@@ -6,6 +6,10 @@ Agent WebSocket 服务器 - 主入口文件
 
 import os
 import sys
+import warnings
+
+# 忽略 paramiko 的加密算法弃用警告
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="paramiko")
 
 # Add user working directory to Python path first
 user_working_dir = os.environ.get('USER_WORKING_DIR')

@@ -29,6 +29,12 @@ setup(
         "typing-extensions>=4.8.0",  # 额外的类型提示功能
         "aiohttp>=3.9.1",        # 异步HTTP客户端
         "fastapi>=0.116",
+        "uvicorn>=0.24.0",       # ASGI服务器
+        "websockets>=12.0",      # WebSocket支持
+        "watchdog>=3.0.0",       # 文件监视
+        "google-genai",          # Google AI SDK
+        "google-generativeai",   # Google Generative AI
+        "aiofiles",
     ],
     # extras_require={
     #     "dev": [
