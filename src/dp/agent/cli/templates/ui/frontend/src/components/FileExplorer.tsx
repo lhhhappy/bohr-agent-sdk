@@ -452,6 +452,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
         <div className="flex-1 flex flex-col bg-gray-50 dark:bg-gray-900" style={{ minWidth: '400px' }}>
           {(() => {
             const cached = selectedFilePath ? fileContentCache.get(selectedFilePath) : null
+            console.log('selectedFilePath',selectedFilePath)
             
             if (!selectedFilePath) {
               return (
@@ -481,7 +482,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
                       <ImageViewer src={cached.url} alt={selectedFilePath.split('/').pop()} />
                     )}
                     {cached.type === 'molecule' && cached.content && (
-                      <MoleculeViewer content={cached.content} height="600px" />
+                      1 ? <div>13</div> : <MoleculeViewer content={cached.content} height="600px" />
                     )}
                   </div>
                 </>

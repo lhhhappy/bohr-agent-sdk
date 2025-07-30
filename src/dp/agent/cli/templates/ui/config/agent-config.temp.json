@@ -1,0 +1,18 @@
+{
+  "agent": {
+    "module": "agent",
+    "rootAgent": "root_agent",
+    "name": "DP Agent Assistant",
+    "description": "AI Assistant powered by DP Agent SDK",
+    "welcomeMessage": "\u6b22\u8fce\u4f7f\u7528 DP Agent Assistant\uff01\u6211\u53ef\u4ee5\u5e2e\u52a9\u60a8\u8fdb\u884c\u79d1\u5b66\u8ba1\u7b97\u3001\u6570\u636e\u5206\u6790\u7b49\u4efb\u52a1\u3002"
+  },
+  "ui": {
+    "title": "DP Agent Assistant"
+  },
+  "server": {
+    "port": 50002,
+    "host": [
+      "*"
+    ]
+  }
+}

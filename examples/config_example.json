@@ -1,6 +1,6 @@
 {
     "agent": {
-        "module": "/Users/lhappy/workbench/bohr-agent-sdk/examples/agent_example/agent.py",
+        "module": "examples/agent_example/agent.py",
         "name": "Paper Research Assistant",
         "welcomeMessage": "I am a paper research assistant"
       },
@@ -9,7 +9,7 @@
       },
       "server": {
         "port": 50001,
-        "host": ["localhost", "127.0.0.1"]
+        "host": ["localhost", "127.0.0.1","*"]
       },
       "files": {
         "watchDirectories": ["./output"]
