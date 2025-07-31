@@ -28,13 +28,45 @@ const ChatInterface: React.FC = () => {
   const [showProjectIdInput, setShowProjectIdInput] = useState(true)
   const [isProjectIdSet, setIsProjectIdSet] = useState(false)
   const [projectIdStatus, setProjectIdStatus] = useState<'idle' | 'updating' | 'success'>('idle')
+  const [requireProjectId, setRequireProjectId] = useState(false)
+  const [projects, setProjects] = useState<Array<{id: number, name: string}>>([])
+  const [loadingProjects, setLoadingProjects] = useState(false)
+  const [projectsError, setProjectsError] = useState<string>('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const messageIdef = useRef<Set<string>>(new Set())
   const loadingTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const isInitialLoad = useRef<boolean>(true)
+  const [ws, setWs] = useState<WebSocket | null>(null)
+  const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected')
   
   // Load agent configuration
   const { config } = useAgentConfig()
+  
+  // Load projects when component mounts or when connection status changes
+  useEffect(() => {
+    if (connectionStatus === 'connected' && !projects.length && !loadingProjects) {
+      loadProjects()
+    }
+  }, [connectionStatus])
+  
+  const loadProjects = async () => {
+    setLoadingProjects(true)
+    setProjectsError('')
+    try {
+      const response = await axios.get(`${API_BASE_URL}/api/projects`)
+      if (response.data.success && response.data.projects) {
+        setProjects(response.data.projects)
+      } else {
+        setProjectsError(response.data.error || '获取项目列表失败')
+      }
+    } catch (error) {
+      console.error('Failed to load projects:', error)
+      setProjectsError('无法连接到服务器')
+    } finally {
+      setLoadingProjects(false)
+    }
+  }
 
   // Show/hide project ID input based on user type
   useEffect(() => {
@@ -45,7 +77,14 @@ const ChatInterface: React.FC = () => {
   }, [config])
 
   useEffect(() => {
-    scrollToBottom()
+    // 只有当有消息且不是初始加载时才滚动
+    if (messages.length > 0 && !isInitialLoad.current) {
+      scrollToBottom()
+    }
+    // 标记初始加载已完成
+    if (isInitialLoad.current) {
+      isInitialLoad.current = false
+    }
   }, [messages, isLoading])
 
   // 延迟显示加载动画，避免闪烁
@@ -67,9 +106,6 @@ const ChatInterface: React.FC = () => {
       }
     }
   }, [isLoading])
-
-  const [ws, setWs] = useState<WebSocket | null>(null)
-  const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected')
 
   // Define loadFileTree before using it
   const loadFileTree = useCallback(async (customPath?: string) => {
@@ -315,10 +351,21 @@ const ChatInterface: React.FC = () => {
     if (type === 'session_messages' && 'messages' in data) {
       // 加载会话历史消息
       const messages = (data as any).messages || []
-      setMessages(messages.map((msg: any) => ({
-        ...msg,
-        timestamp: new Date(msg.timestamp)
-      })))
+      console.log('Loading session messages:', messages)
+      const processedMessages = messages.map((msg: any) => {
+        const processed = {
+          id: msg.id,
+          role: msg.role,
+          content: msg.content,
+          timestamp: new Date(msg.timestamp),
+          // 保留工具相关字段
+          tool_name: msg.tool_name,
+          tool_status: msg.tool_status
+        }
+        console.log('Processed message:', processed)
+        return processed
+      })
+      setMessages(processedMessages)
       // 清除消息ID缓存，避免重复
       messageIdef.current.clear()
       messages.forEach((msg: any) => {
@@ -409,6 +456,17 @@ const ChatInterface: React.FC = () => {
       setIsLoading(false)
     }
     
+    if (type === 'require_project_id') {
+      setRequireProjectId(true)
+    }
+    
+    if (type === 'project_id_set' && 'project_id' in data) {
+      setProjectId((data as any).project_id.toString())
+      setTempProjectId((data as any).project_id.toString())
+      setIsProjectIdSet(true)
+      setRequireProjectId(false)
+    }
+    
     if (type === 'file_change') {
       // Handle file change notification
       // File change detected
@@ -454,37 +512,129 @@ const ChatInterface: React.FC = () => {
                 <label htmlFor="projectId" className="text-sm font-medium text-gray-600 dark:text-gray-300">
                   Project ID:
                 </label>
-                <input
-                  id="projectId"
-                  type="text"
-                  value={tempProjectId || projectId}
-                  onChange={(e) => setTempProjectId(e.target.value)}
-                  placeholder="如果你需要在Bohrium上提交任务，请输入项目ID"
-                  className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 w-64"
-                />
-                {tempProjectId && tempProjectId !== projectId && (
-                  <button
-                    onClick={handleProjectIdConfirm}
-                    className="px-3 py-1.5 text-sm font-medium text-white bg-blue-500 hover:bg-blue-600 rounded-lg transition-colors"
+                {loadingProjects ? (
+                  <div className="px-3 py-1.5 text-sm text-gray-500 dark:text-gray-400">
+                    正在获取项目列表...
+                  </div>
+                ) : projects.length > 0 ? (
+                  <select
+                    id="projectId"
+                    value={tempProjectId || projectId}
+                    onChange={(e) => {
+                      setTempProjectId(e.target.value)
+                    }}
+                    className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 w-64 appearance-none cursor-pointer"
+                    style={{ 
+                      backgroundImage: `url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e")`,
+                      backgroundRepeat: 'no-repeat',
+                      backgroundPosition: 'right 0.7rem center',
+                      backgroundSize: '1.2em 1.2em',
+                      paddingRight: '2.5rem'
+                    }}
                   >
-                    确认
-                  </button>
+                    <option value="">选择项目...</option>
+                    {projects.map(project => (
+                      <option key={project.id} value={project.id.toString()}>
+                        {project.name}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <select
+                      id="projectId"
+                      disabled
+                      className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 w-64 cursor-not-allowed"
+                    >
+                      <option value="">{projectsError || "无法获取项目列表"}</option>
+                    </select>
+                    {projectsError && (
+                      <button
+                        onClick={loadProjects}
+                        className="px-3 py-1.5 text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium"
+                      >
+                        重试
+                      </button>
+                    )}
+                  </div>
                 )}
-                {projectIdStatus === 'updating' && (
-                  <span className="text-sm text-blue-600 dark:text-blue-400">
-                    正在更新...
-                  </span>
+                {tempProjectId && tempProjectId !== projectId && (
+                  <motion.button
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={handleProjectIdConfirm}
+                    className="px-4 py-1.5 text-sm font-medium text-white bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 rounded-lg shadow-md hover:shadow-lg transition-all duration-200"
+                  >
+                    <span className="flex items-center gap-1">
+                      确认
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </span>
+                  </motion.button>
                 )}
-                {projectIdStatus === 'success' && (
-                  <span className="text-sm text-green-600 dark:text-green-400">
-                    ✓ 更新成功
-                  </span>
-                )}
-                {projectIdStatus === 'idle' && isProjectIdSet && projectId && (
-                  <span className="text-sm text-gray-600 dark:text-gray-400">
-                    已设置: {projectId}
-                  </span>
-                )}
+                <AnimatePresence mode="wait">
+                  {projectIdStatus === 'updating' && (
+                    <motion.span
+                      key="updating"
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: 10 }}
+                      className="text-sm text-blue-600 dark:text-blue-400 flex items-center gap-2"
+                    >
+                      <motion.div
+                        animate={{ rotate: 360 }}
+                        transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                        className="w-4 h-4"
+                      >
+                        <svg className="w-full h-full" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                      </motion.div>
+                      正在更新...
+                    </motion.span>
+                  )}
+                  {projectIdStatus === 'success' && (
+                    <motion.span
+                      key="success"
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.8 }}
+                      className="text-sm text-green-600 dark:text-green-400 flex items-center gap-1"
+                    >
+                      <motion.svg
+                        initial={{ scale: 0, rotate: -180 }}
+                        animate={{ scale: 1, rotate: 0 }}
+                        transition={{ type: "spring", stiffness: 200, damping: 15 }}
+                        className="w-4 h-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                      </motion.svg>
+                      更新成功
+                    </motion.span>
+                  )}
+                  {projectIdStatus === 'idle' && isProjectIdSet && projectId && (
+                    <motion.div
+                      key="set"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="flex items-center gap-2"
+                    >
+                      <span className="text-sm text-gray-500 dark:text-gray-400">已设置:</span>
+                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded">
+                        {projects.find(p => p.id.toString() === projectId)?.name || projectId}
+                      </span>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
             )}
             <button
@@ -517,6 +667,29 @@ const ChatInterface: React.FC = () => {
 
         {/* Messages Area */}
         <div className="flex-1 overflow-y-auto px-4 py-6 relative">
+          {/* Project ID 提示横幅 */}
+          {requireProjectId && !isProjectIdSet && (
+            <div className="max-w-4xl mx-auto mb-4">
+              <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
+                <div className="flex items-start">
+                  <div className="flex-shrink-0">
+                    <svg className="h-5 w-5 text-yellow-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+                  <div className="ml-3">
+                    <h3 className="text-sm font-medium text-yellow-800 dark:text-yellow-200">
+                      需要选择项目
+                    </h3>
+                    <div className="mt-2 text-sm text-yellow-700 dark:text-yellow-300">
+                      <p>请从下拉列表中选择您的 Bohrium 项目以开始使用</p>
+                      <p className="mt-1 text-xs">如果看不到项目列表，请检查您的 AccessKey 配置</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
           <div className="max-w-4xl mx-auto space-y-6 h-full">
             {messages.length === 0 ? (
               <div className="absolute inset-0 flex items-center justify-center">
@@ -608,8 +781,9 @@ const ChatInterface: React.FC = () => {
               />
               <button
                 onClick={handleSend}
-                disabled={!input.trim() || isLoading || connectionStatus !== 'connected'}
+                disabled={!input.trim() || isLoading || connectionStatus !== 'connected' || (requireProjectId && !isProjectIdSet)}
                 className="px-4 py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl font-medium hover:from-blue-600 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-lg hover:shadow-xl flex items-center gap-2 btn-animated liquid-button"
+                title={requireProjectId && !isProjectIdSet ? '🔒 请先选择项目' : ''}
               >
                 <Send className="w-4 h-4" />
                 发送

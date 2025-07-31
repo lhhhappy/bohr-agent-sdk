@@ -13,7 +13,7 @@ from server.middleware import RequestLoggingMiddleware, HostValidationMiddleware
 from config.agent_config import agentconfig
 
 # 导入所有 API 端点
-from api import websocket, files, sessions, config as config_api
+from api import websocket, files, sessions, config as config_api, projects
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +97,7 @@ def create_app() -> FastAPI:
     app.get("/api/files{file_path:path}")(files.get_file_content)
     app.delete("/api/sessions/clear")(sessions.clear_user_sessions)
     app.get("/api/sessions/export")(sessions.export_user_sessions)
+    app.get("/api/projects")(projects.get_projects)
     
     # 挂载静态文件服务
     # 获取 UI 静态文件目录

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Copy, Check, Download } from 'lucide-react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { motion } from 'framer-motion';
 
 interface EnhancedCodeBlockProps {
@@ -46,7 +46,7 @@ export const EnhancedCodeBlock: React.FC<EnhancedCodeBlockProps> = React.memo(({
   const CodeContent = () => (
     <div className="relative group">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-2 bg-gray-900 border-b border-gray-700 rounded-t-lg">
+      <div className="flex items-center justify-between px-4 py-2 bg-gray-100 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 rounded-t-lg">
         <div className="flex items-center gap-3">
           {filename ? (
             <span className="text-sm text-gray-400 font-mono">{filename}</span>
@@ -84,7 +84,7 @@ export const EnhancedCodeBlock: React.FC<EnhancedCodeBlockProps> = React.memo(({
       <div className="overflow-auto max-h-96">
         <SyntaxHighlighter
           language={language}
-          style={vscDarkPlus}
+          style={oneLight}
           showLineNumbers={language === 'json' ? false : showLineNumbers}
           customStyle={{
             margin: 0,
@@ -92,7 +92,7 @@ export const EnhancedCodeBlock: React.FC<EnhancedCodeBlockProps> = React.memo(({
             fontSize: '0.875rem',
             lineHeight: '1.5',
             padding: '1rem',
-            background: language === 'json' ? '#1e293b' : undefined
+            background: '#f9fafb'
           }}
           wrapLines={true}
           wrapLongLines={true}
@@ -104,7 +104,7 @@ export const EnhancedCodeBlock: React.FC<EnhancedCodeBlockProps> = React.memo(({
   );
 
   return (
-    <div className={`rounded-lg shadow-lg ${className}`}>
+    <div className={`rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden ${className}`}>
       <CodeContent />
     </div>
   );
@@ -118,7 +118,7 @@ export const createCodeComponent = () => {
     
     if (inline) {
       return (
-        <code className="bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded text-sm font-mono">
+        <code className="bg-gray-100 dark:bg-gray-800 px-1 py-0 rounded-sm font-mono text-sm">
           {children}
         </code>
       );
@@ -137,6 +137,21 @@ export const createCodeComponent = () => {
         filename = fileMatch[1].trim();
         actualCode = codeString.split('\n').slice(1).join('\n');
       }
+    }
+
+    // 检测是否为单行短代码块
+    const codeLines = actualCode.split('\n');
+    const isSingleLineShort = codeLines.length === 1 && actualCode.length < 60;
+
+    // 对于单行短代码块，使用紧凑样式
+    if (isSingleLineShort) {
+      return (
+        <div className="inline-block my-2">
+          <code className="inline-block bg-gray-100 dark:bg-gray-800 px-3 py-1.5 rounded-md text-sm font-mono border border-gray-200 dark:border-gray-700">
+            {actualCode}
+          </code>
+        </div>
+      );
     }
 
     return (

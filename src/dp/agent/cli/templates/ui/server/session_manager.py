@@ -58,8 +58,25 @@ class SessionManager:
     async def _init_session_runner(self, context: ConnectionContext, session_id: str):
         """异步初始化会话的runner"""
         try:
+            # 检查是否有 project_id（可以从环境变量获取用于开发）
+            project_id = context.project_id
+            if not project_id:
+                # 尝试从环境变量获取（仅用于开发调试）
+                env_project_id = os.environ.get('BOHR_PROJECT_ID')
+                if env_project_id:
+                    try:
+                        project_id = int(env_project_id)
+                        context.project_id = project_id
+                        logger.info(f"从环境变量获取 project_id: {project_id}")
+                    except ValueError:
+                        logger.error(f"环境变量 BOHR_PROJECT_ID 值无效: {env_project_id}")
+            
+            # 如果仍然没有 project_id，记录警告但继续（让前端处理）
+            if not project_id:
+                logger.warning(f"会话 {session_id} 初始化时没有 project_id")
+            
             # 直接传递 AK 给 agent，避免使用环境变量
-            logger.info(f"开始为会话 {session_id} 创建 Runner，AK: {context.access_key[:8] if context.access_key else 'None'}...")
+            logger.info(f"开始为会话 {session_id} 创建 Runner，AK: {context.access_key[:8] if context.access_key else 'None'}，project_id: {project_id}...")
             
             # 在异步任务中创建agent，避免阻塞主线程
             # 确保传入正确的AK（如果是空字符串或None，agent应该知道这是临时用户）
@@ -69,7 +86,7 @@ class SessionManager:
                 agentconfig.get_agent, 
                 context.access_key if context.access_key else "",
                 context.app_key if context.app_key else "",
-                context.project_id if context.project_id else None
+                project_id
             )
             
             session_service = InMemorySessionService()
@@ -193,6 +210,13 @@ class SessionManager:
         if context.current_session_id:
             await self.send_session_messages(context, context.current_session_id)
         
+        # 发送 project_id 状态
+        if not context.project_id and not os.environ.get('BOHR_PROJECT_ID'):
+            await context.websocket.send_json({
+                "type": "require_project_id",
+                "content": "需要设置 Project ID 才能使用 Agent"
+            })
+        
     async def disconnect_client(self, websocket: WebSocket):
         """断开客户端连接"""
         if websocket in self.active_connections:
@@ -277,6 +301,14 @@ class SessionManager:
     
     async def process_message(self, context: ConnectionContext, message: str):
         """处理用户消息"""
+        # 首先检查是否有 project_id
+        if not context.project_id and not os.environ.get('BOHR_PROJECT_ID'):
+            await context.websocket.send_json({
+                "type": "error", 
+                "content": "🔒 请先选择您的项目"
+            })
+            return
+        
         if not context.current_session_id:
             await context.websocket.send_json({
                 "type": "error", 
@@ -304,13 +336,43 @@ class SessionManager:
         session.add_message("user", message)
         
         try:
-            if context.access_key:
-                logger.info(f"处理消息，用户AK: {context.access_key[:8]}...")
-            
-            content = types.Content(
-                role='user',
-                parts=[types.Part(text=message)]
-            )
+            # 构建包含历史上下文的消息（如果有历史）
+            if len(session.messages) > 1:  # 有历史消息
+                # 构建历史上下文
+                history_parts = []
+                # 只取最近的消息，跳过刚刚添加的用户消息
+                recent_messages = session.messages[-11:-1]  # 最多10条历史
+                
+                for msg in recent_messages:
+                    if msg.role == 'user':
+                        history_parts.append(f"用户: {msg.content[:100]}{'...' if len(msg.content) > 100 else ''}")
+                    elif msg.role == 'assistant':
+                        history_parts.append(f"助手: {msg.content[:150]}{'...' if len(msg.content) > 150 else ''}")
+                    elif msg.role == 'tool' and msg.tool_status == 'completed':
+                        # 简化工具输出
+                        tool_summary = f"[使用工具 {msg.tool_name}]"
+                        history_parts.append(tool_summary)
+                
+                if history_parts:
+                    # 构建增强消息
+                    enhanced_message = f"[对话历史]\n{chr(10).join(history_parts[-8:])}\n\n[当前问题]\n{message}"
+                    logger.info(f"包含 {len(history_parts)} 条历史消息在上下文中")
+                    
+                    content = types.Content(
+                        role='user',
+                        parts=[types.Part(text=enhanced_message)]
+                    )
+                else:
+                    content = types.Content(
+                        role='user',
+                        parts=[types.Part(text=message)]
+                    )
+            else:
+                # 没有历史，直接使用原始消息
+                content = types.Content(
+                    role='user',
+                    parts=[types.Part(text=message)]
+                )
             
             # 收集所有事件
             all_events = []
@@ -347,6 +409,8 @@ class SessionManager:
                                 }
                                 logger.info(f"Sending tool executing status: {tool_executing_msg}")
                                 await self.send_to_connection(context, tool_executing_msg)
+                                
+                                # 不保存执行中的状态到历史记录
                                 logger.info(f"Tool call detected: {tool_name}")
                                 # 给前端一点时间来处理和显示执行状态
                                 await asyncio.sleep(0.1)
@@ -402,6 +466,9 @@ class SessionManager:
                                     }
                                     logger.info(f"Sending tool completed status: {tool_name}")
                                     await self.send_to_connection(context, tool_completed_msg)
+                                    
+                                    # 保存工具完成消息到会话历史
+                                    session.add_message("tool", result_str, tool_name=tool_name, tool_status="completed")
                                 else:
                                     # 没有结果的情况
                                     await self.send_to_connection(context, {
@@ -410,6 +477,9 @@ class SessionManager:
                                         "status": "completed",
                                         "timestamp": datetime.now().isoformat()
                                     })
+                                    
+                                    # 保存工具完成消息到会话历史（无结果）
+                                    session.add_message("tool", f"工具 {tool_name} 执行完成", tool_name=tool_name, tool_status="completed")
                                 
                                 logger.info(f"Tool response received: {tool_name}")
             
