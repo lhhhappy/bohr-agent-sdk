@@ -540,14 +540,23 @@ const ChatInterface: React.FC = () => {
                     ))}
                   </select>
                 ) : (
-                  <input
-                    id="projectId"
-                    type="text"
-                    value={tempProjectId || projectId}
-                    onChange={(e) => setTempProjectId(e.target.value)}
-                    placeholder={projectsError || "请输入项目ID"}
-                    className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 w-64"
-                  />
+                  <div className="flex items-center gap-2">
+                    <select
+                      id="projectId"
+                      disabled
+                      className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 w-64 cursor-not-allowed"
+                    >
+                      <option value="">{projectsError || "无法获取项目列表"}</option>
+                    </select>
+                    {projectsError && (
+                      <button
+                        onClick={loadProjects}
+                        className="px-3 py-1.5 text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium"
+                      >
+                        重试
+                      </button>
+                    )}
+                  </div>
                 )}
                 {tempProjectId && tempProjectId !== projectId && (
                   <motion.button
@@ -673,7 +682,8 @@ const ChatInterface: React.FC = () => {
                       需要选择项目
                     </h3>
                     <div className="mt-2 text-sm text-yellow-700 dark:text-yellow-300">
-                      <p>请选择您的 Bohrium 项目以开始使用</p>
+                      <p>请从下拉列表中选择您的 Bohrium 项目以开始使用</p>
+                      <p className="mt-1 text-xs">如果看不到项目列表，请检查您的 AccessKey 配置</p>
                     </div>
                   </div>
                 </div>
