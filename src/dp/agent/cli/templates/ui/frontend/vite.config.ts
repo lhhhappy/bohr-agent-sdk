@@ -19,6 +19,10 @@ export default defineConfig({
     allowedHosts: true,
     proxy: {
       // Proxy API and WebSocket requests to the backend server
+      '/api/materials_db': {
+        target: `https://www.test.bohrium.com`,
+        changeOrigin: true,
+      },
       '/api': {
         target: `http://localhost:${process.env.VITE_WS_PORT || '8000'}`,
         changeOrigin: true,
@@ -27,7 +31,7 @@ export default defineConfig({
         target: `ws://localhost:${process.env.VITE_WS_PORT || '8000'}`,
         ws: true,
         changeOrigin: true,
-      }
+      },
     }
   }
 })

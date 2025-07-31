@@ -1,18 +1,25 @@
 {
   "agent": {
-    "module": "agent",
+    "module": "examples/agent_example/agent.py",
     "rootAgent": "root_agent",
-    "name": "DP Agent Assistant",
+    "name": "Paper Research Assistant",
     "description": "AI Assistant powered by DP Agent SDK",
-    "welcomeMessage": "\u6b22\u8fce\u4f7f\u7528 DP Agent Assistant\uff01\u6211\u53ef\u4ee5\u5e2e\u52a9\u60a8\u8fdb\u884c\u79d1\u5b66\u8ba1\u7b97\u3001\u6570\u636e\u5206\u6790\u7b49\u4efb\u52a1\u3002"
+    "welcomeMessage": "I am a paper research assistant"
   },
   "ui": {
-    "title": "DP Agent Assistant"
+    "title": "Paper Research Assistant"
   },
   "server": {
-    "port": 50002,
+    "port": 50001,
     "host": [
+      "localhost",
+      "127.0.0.1",
       "*"
+    ]
+  },
+  "files": {
+    "watchDirectories": [
+      "./output"
     ]
   }
 }

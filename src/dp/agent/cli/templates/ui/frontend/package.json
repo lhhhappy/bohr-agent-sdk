@@ -7,8 +7,13 @@
     "@tailwindcss/typography": "^0.5.10",
     "axios": "^1.6.2",
     "classnames": "^2.3.2",
+    "clsx": "^2.1.1",
     "date-fns": "^2.30.0",
+    "dpmol": "git+https://git.dp.tech/fe/dp-mol#1.0.0-alpha-0.1.6",
+    "dptd": "npm:@dpt-design/dptd@^5.23.0-alpha.1",
     "framer-motion": "^10.16.0",
+    "keyboardjs": "^2.7.0",
+    "lodash-es": "^4.17.21",
     "lucide-react": "^0.292.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
@@ -16,7 +21,9 @@
     "react-router-dom": "^6.20.0",
     "react-syntax-highlighter": "^15.5.0",
     "remark-gfm": "^4.0.0",
-    "socket.io-client": "^4.5.4"
+    "rxjs": "^7.8.2",
+    "socket.io-client": "^4.5.4",
+    "zustand": "^5.0.6"
   },
   "devDependencies": {
     "@types/node": "^24.1.0",
@@ -25,6 +32,7 @@
     "@types/react-syntax-highlighter": "^15.5.11",
     "@vitejs/plugin-react": "^4.2.0",
     "autoprefixer": "^10.4.16",
+    "less": "^4.4.0",
     "postcss": "^8.4.32",
     "tailwindcss": "^3.3.6",
     "typescript": "^5.3.0",

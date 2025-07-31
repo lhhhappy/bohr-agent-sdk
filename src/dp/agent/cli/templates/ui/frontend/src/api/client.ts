@@ -49,6 +49,11 @@ export const api = {
     const response = await apiClient.get(API_CONFIG.API_ENDPOINTS.CONFIG)
     return response.data
   },
+
+  async getASEByFileReq(params: { fileContent: string; format: string }) {
+    const response = await apiClient.post('/api/materials_db/public/v1/material_visualization/info_by_str', params)
+    return response.data
+  }
 }
 
 // WebSocket connection
