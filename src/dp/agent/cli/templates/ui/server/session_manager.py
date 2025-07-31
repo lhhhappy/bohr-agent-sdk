@@ -336,13 +336,43 @@ class SessionManager:
         session.add_message("user", message)
         
         try:
-            if context.access_key:
-                logger.info(f"处理消息，用户AK: {context.access_key[:8]}...")
-            
-            content = types.Content(
-                role='user',
-                parts=[types.Part(text=message)]
-            )
+            # 构建包含历史上下文的消息（如果有历史）
+            if len(session.messages) > 1:  # 有历史消息
+                # 构建历史上下文
+                history_parts = []
+                # 只取最近的消息，跳过刚刚添加的用户消息
+                recent_messages = session.messages[-11:-1]  # 最多10条历史
+                
+                for msg in recent_messages:
+                    if msg.role == 'user':
+                        history_parts.append(f"用户: {msg.content[:100]}{'...' if len(msg.content) > 100 else ''}")
+                    elif msg.role == 'assistant':
+                        history_parts.append(f"助手: {msg.content[:150]}{'...' if len(msg.content) > 150 else ''}")
+                    elif msg.role == 'tool' and msg.tool_status == 'completed':
+                        # 简化工具输出
+                        tool_summary = f"[使用工具 {msg.tool_name}]"
+                        history_parts.append(tool_summary)
+                
+                if history_parts:
+                    # 构建增强消息
+                    enhanced_message = f"[对话历史]\n{chr(10).join(history_parts[-8:])}\n\n[当前问题]\n{message}"
+                    logger.info(f"包含 {len(history_parts)} 条历史消息在上下文中")
+                    
+                    content = types.Content(
+                        role='user',
+                        parts=[types.Part(text=enhanced_message)]
+                    )
+                else:
+                    content = types.Content(
+                        role='user',
+                        parts=[types.Part(text=message)]
+                    )
+            else:
+                # 没有历史，直接使用原始消息
+                content = types.Content(
+                    role='user',
+                    parts=[types.Part(text=message)]
+                )
             
             # 收集所有事件
             all_events = []
