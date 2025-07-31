@@ -1,10 +1,7 @@
 import React from 'react';
 import { Bot, User } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import { createCodeComponent } from './EnhancedCodeBlock';
-import { StreamingText } from './MessageAnimation';
 import { ToolResultDisplay } from './ToolResultDisplay';
+import { MemoizedMarkdown } from './MemoizedMarkdown';
 
 interface MessageProps {
   id: string;
@@ -51,41 +48,14 @@ export const MemoizedMessage = React.memo<MessageProps>(({
               result={content || undefined}
             />
           ) : role === 'assistant' ? (
-            <div className="prose prose-sm dark:prose-invert max-w-none">
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
-                components={{
-                  code: createCodeComponent(),
-                  a({ children, href, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) {
-                    return (
-                      <a
-                        href={href}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 underline"
-                        {...props}
-                      >
-                        {children}
-                      </a>
-                    )
-                  },
-                  p({ children }: React.HTMLAttributes<HTMLParagraphElement>) {
-                    if (isLastMessage && isStreaming) {
-                      return (
-                        <p>
-                          <StreamingText
-                            text={String(children)}
-                            isStreaming={true}
-                          />
-                        </p>
-                      )
-                    }
-                    return <p>{children}</p>
-                  }
-                }}
+            <div className="prose prose-gray dark:prose-invert max-w-none">
+              <MemoizedMarkdown 
+                className="claude-markdown"
+                isStreaming={isStreaming}
+                isLastMessage={isLastMessage}
               >
                 {content}
-              </ReactMarkdown>
+              </MemoizedMarkdown>
             </div>
           ) : (
             <p className="text-sm whitespace-pre-wrap">{content}</p>

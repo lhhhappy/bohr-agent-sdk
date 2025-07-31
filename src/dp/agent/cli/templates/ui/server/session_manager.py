@@ -379,6 +379,8 @@ class SessionManager:
                                 }
                                 logger.info(f"Sending tool executing status: {tool_executing_msg}")
                                 await self.send_to_connection(context, tool_executing_msg)
+                                
+                                # 不保存执行中的状态到历史记录
                                 logger.info(f"Tool call detected: {tool_name}")
                                 # 给前端一点时间来处理和显示执行状态
                                 await asyncio.sleep(0.1)
@@ -434,6 +436,9 @@ class SessionManager:
                                     }
                                     logger.info(f"Sending tool completed status: {tool_name}")
                                     await self.send_to_connection(context, tool_completed_msg)
+                                    
+                                    # 保存工具完成消息到会话历史
+                                    session.add_message("tool", result_str, tool_name=tool_name, tool_status="completed")
                                 else:
                                     # 没有结果的情况
                                     await self.send_to_connection(context, {
@@ -442,6 +447,9 @@ class SessionManager:
                                         "status": "completed",
                                         "timestamp": datetime.now().isoformat()
                                     })
+                                    
+                                    # 保存工具完成消息到会话历史（无结果）
+                                    session.add_message("tool", f"工具 {tool_name} 执行完成", tool_name=tool_name, tool_status="completed")
                                 
                                 logger.info(f"Tool response received: {tool_name}")
             

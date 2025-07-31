@@ -36,6 +36,7 @@ const ChatInterface: React.FC = () => {
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const messageIdef = useRef<Set<string>>(new Set())
   const loadingTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const isInitialLoad = useRef<boolean>(true)
   const [ws, setWs] = useState<WebSocket | null>(null)
   const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected')
   
@@ -76,7 +77,14 @@ const ChatInterface: React.FC = () => {
   }, [config])
 
   useEffect(() => {
-    scrollToBottom()
+    // 只有当有消息且不是初始加载时才滚动
+    if (messages.length > 0 && !isInitialLoad.current) {
+      scrollToBottom()
+    }
+    // 标记初始加载已完成
+    if (isInitialLoad.current) {
+      isInitialLoad.current = false
+    }
   }, [messages, isLoading])
 
   // 延迟显示加载动画，避免闪烁
@@ -343,10 +351,21 @@ const ChatInterface: React.FC = () => {
     if (type === 'session_messages' && 'messages' in data) {
       // 加载会话历史消息
       const messages = (data as any).messages || []
-      setMessages(messages.map((msg: any) => ({
-        ...msg,
-        timestamp: new Date(msg.timestamp)
-      })))
+      console.log('Loading session messages:', messages)
+      const processedMessages = messages.map((msg: any) => {
+        const processed = {
+          id: msg.id,
+          role: msg.role,
+          content: msg.content,
+          timestamp: new Date(msg.timestamp),
+          // 保留工具相关字段
+          tool_name: msg.tool_name,
+          tool_status: msg.tool_status
+        }
+        console.log('Processed message:', processed)
+        return processed
+      })
+      setMessages(processedMessages)
       // 清除消息ID缓存，避免重复
       messageIdef.current.clear()
       messages.forEach((msg: any) => {

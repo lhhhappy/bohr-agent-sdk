@@ -1,6 +1,6 @@
-import React from 'react';
-import { Terminal, CheckCircle, AlertCircle, Clock, Wrench } from 'lucide-react';
-import { motion } from 'framer-motion';
+import React, { useState } from 'react';
+import { Terminal, CheckCircle, AlertCircle, Clock, Wrench, ChevronDown, ChevronUp } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { JsonDisplay } from './JsonDisplay';
 
 interface ToolResultDisplayProps {
@@ -16,6 +16,7 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({
   result,
   isLongRunning = false
 }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
   // 解析结果内容，处理特殊格式
   const formatResult = (content: string) => {
     // 尝试解析 JSON
@@ -109,16 +110,50 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({
             </span>
           </div>
         </div>
+        {/* 展开/收起按钮 */}
+        {result && status === 'completed' && (
+          <button
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors text-gray-600 dark:text-gray-400"
+            title={isExpanded ? '收起结果' : '展开结果'}
+          >
+            {isExpanded ? (
+              <ChevronUp className="w-5 h-5" />
+            ) : (
+              <ChevronDown className="w-5 h-5" />
+            )}
+          </button>
+        )}
       </div>
 
       {/* 工具结果 */}
-      {result && status === 'completed' && (
-        <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
-          <div className="bg-white dark:bg-gray-800 rounded-md p-3 shadow-inner">
-            {formatResult(result)}
-          </div>
-        </div>
-      )}
+      <AnimatePresence mode="wait">
+        {result && status === 'completed' && isExpanded && (
+          <motion.div
+            key="content"
+            initial={{ opacity: 0, maxHeight: 0 }}
+            animate={{ opacity: 1, maxHeight: 2000 }}
+            exit={{ opacity: 0, maxHeight: 0 }}
+            transition={{
+              maxHeight: {
+                type: "spring",
+                damping: 25,
+                stiffness: 200
+              },
+              opacity: {
+                duration: 0.2
+              }
+            }}
+            className="overflow-hidden"
+          >
+            <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+              <div className="bg-white dark:bg-gray-800 rounded-md p-3 shadow-inner">
+                {formatResult(result)}
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* 运行中的动画 */}
       {(status === 'running' || status === 'executing' || status === 'started') && (
