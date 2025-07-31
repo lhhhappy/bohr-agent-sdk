@@ -1,11 +1,9 @@
 import asyncio
-import getpass
 import os
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, START, END, add_messages
 from langgraph.prebuilt import create_react_agent
-load_dotenv()
 from langchain_tavily import TavilySearch
 from langchain_core.messages import HumanMessage, AIMessage,BaseMessage
 import operator
@@ -15,7 +13,7 @@ from pydantic import BaseModel, Field
 from langchain_core.prompts import ChatPromptTemplate
 from typing import Union
 from langgraph.checkpoint.memory import MemorySaver
-
+load_dotenv()
 tools = [TavilySearch(max_results=3)]
 
 # Choose the LLM that will drive the agent
@@ -46,6 +44,16 @@ class Plan(BaseModel):
     steps: List[str] = Field(
         description="different steps to follow, should be in sorted order"
     )
+class Response(BaseModel):
+    """Response to user."""
+    response: str
+class Act(BaseModel):
+    """Action to perform."""
+
+    action: Union[Response, Plan] = Field(
+        description="Action to perform. If you want to respond to user, use Response. "
+        "If you need to further use tools to get the answer, use Plan."
+    )
 
 
 planner_prompt = ChatPromptTemplate.from_messages(
@@ -72,19 +80,6 @@ planner = planner_prompt | ChatOpenAI(
 #     }
 # )
 # print(res)
-
-class Response(BaseModel):
-    """Response to user."""
-    response: str
-
-
-class Act(BaseModel):
-    """Action to perform."""
-
-    action: Union[Response, Plan] = Field(
-        description="Action to perform. If you want to respond to user, use Response. "
-        "If you need to further use tools to get the answer, use Plan."
-    )
 
 
 replanner_prompt = ChatPromptTemplate.from_template(
@@ -114,8 +109,6 @@ replanner = replanner_prompt | ChatOpenAI(
                 base_url=os.environ['OPENAI_API_BASE_URL']
             ).with_structured_output(Act)
 
-
-
 async def execute_step(state: PlanExecute):
     plan = state["plan"]
     plan_str = "\n".join(f"{i + 1}. {step}" for i, step in enumerate(plan))
@@ -128,12 +121,6 @@ async def execute_step(state: PlanExecute):
     return {
         "past_steps": [(task, agent_response["messages"][-1].content)],
     }
-
-
-# async def plan_step(state: State):
-
-#     plan = await planner.ainvoke({"messages": [("user", state["input"])]})
-#     return {"plan": plan.steps}
 async def plan_step(state: PlanExecute):
     print("plan_step")
     print(state)
@@ -186,19 +173,19 @@ checkpointer = MemorySaver()
 # This compiles it into a LangChain Runnable,
 # meaning you can use it as you would any other runnable
 app = workflow.compile(checkpointer=checkpointer)
-config = {
-    "recursion_limit": 50,
-    "configurable": {
-        "thread_id": "test-thread-1"  # 必填！
-    }
-}
+# config = {
+#     "recursion_limit": 50,
+#     "configurable": {
+#         "thread_id": "test-thread-1"  # 必填！
+#     }
+# }
 # 用 HumanMessage 模拟用户提问
-inputs = {
-    "messages": [HumanMessage(content=" 实现一个简单的计划能够完成番茄炒鸡蛋?中文回答")]
-}
-async def main():
-    async for event in app.astream(inputs, config=config):
-        for k, v in event.items():
-            if k != "__end__":
-                print(v)
-asyncio.run(main())
+# inputs = {
+#     "messages": [HumanMessage(content=" 实现一个简单的计划能够完成番茄炒鸡蛋?中文回答")]
+# }
+# async def main():
+#     async for event in app.astream(inputs, config=config):
+#         for k, v in event.items():
+#             if k != "__end__":
+#                 print(v)
+# asyncio.run(main())

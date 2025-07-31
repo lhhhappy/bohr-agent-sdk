@@ -14,11 +14,6 @@ from google.genai import types # 用于创建消息 Content/Parts
 import warnings
 # 忽略所有警告
 warnings.filterwarnings("ignore")
-
-import logging
-logging.basicConfig(level=logging.ERROR)
-
-print("Libraries imported.")
 load_dotenv()
 
 def create_agent():
@@ -74,3 +69,4 @@ async def call_agent_async(query: str):
     print(f"<<< Agent Response: {final_response_text}")
 import asyncio
 asyncio.run(call_agent_async('实现一个简单的计划能够完成番茄炒鸡蛋'))
+# 耗时发生在langraph获取足够多的信息

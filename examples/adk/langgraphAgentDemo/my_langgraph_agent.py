@@ -21,19 +21,10 @@ from langchain_core.runnables.config import RunnableConfig
 from langgraph.graph.state import CompiledStateGraph
 from pydantic import ConfigDict
 from typing_extensions import override
-import operator
 from google.adk.events import Event
 from google.adk.agents.base_agent import BaseAgent
 from google.adk.agents.invocation_context import InvocationContext
-from typing import Annotated, List, Tuple
-from typing_extensions import TypedDict
 
-class PlanExecute(TypedDict):
-    input: str
-    plan: List[str]
-    past_steps: Annotated[List[Tuple], operator.add]
-    response: str
-    messages: Annotated[List[BaseMessage], operator.add]
 
 def _get_last_human_messages(events: list[Event]) -> list[HumanMessage]:
   """Extracts last human messages from given list of events.
@@ -88,17 +79,11 @@ class MyLangGraphAgent(BaseAgent):
     )
     # Add events to messages (evaluating the memory used; parent agent vs checkpointer)
     messages += self._get_messages(ctx.session.events)
-    # 非增量类型无法被传递消息
-    state = PlanExecute(
-        input='aaaa',
-        plan=current_graph_state.values.get('plan', []),
-        past_steps=current_graph_state.values.get('past_steps', []),
-        response=current_graph_state.values.get('response', ''),
-        messages=messages,
-    )
-    # Use the Runnable
-    # print(state)
-    final_state = await self.graph.ainvoke(state, config)
+
+  
+    # 测试发现额外增加的键无法被langgraph的State 解析。。只能传递“messages"
+    final_state = await self.graph.ainvoke({"messages":messages}, config)
+    # 测试发现langgraph的输出State 额外增加的键无法被解析。。只能传递“messages"
     # print("final_state")
     # print(final_state)
     result = final_state['messages'][-1].content
