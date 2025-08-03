@@ -1,5 +1,10 @@
 *~
 *.bk*
+
+# Frontend development
+src/dp/agent/cli/templates/ui/frontend/node_modules/
+# Frontend build output (ui-static is committed for pip git install)
+src/dp/agent/cli/templates/ui/frontend/dist/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -138,5 +143,11 @@ _version.py
 .vscode/
 .idea/
 
-# Mac OS
 .DS_store
+node_modules/
+package-lock.json
+testagent/
+agent-config.json
+CLAUDE.md
+output/
+.agent_sessions/

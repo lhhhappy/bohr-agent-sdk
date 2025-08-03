@@ -1,0 +1,15 @@
+{
+  "agent": {
+    "module": "agent.agent",
+    "rootAgent": "root_agent",
+    "name": "DP Agent Assistant",
+    "welcomeMessage": "欢迎使用 DP Agent Assistant！我可以帮助您进行科学计算、数据分析等任务。"
+  },
+  "ui": {
+    "title": "DP Agent Assistant"
+  },
+  "server": {
+    "port": 50002,
+    "host": ["localhost", "127.0.0.1"]
+  }
+}
