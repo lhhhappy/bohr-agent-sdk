@@ -8,6 +8,9 @@ import { motion, AnimatePresence } from 'framer-motion'
 import axios from 'axios'
 import ImageViewer from './ImageViewer'
 import MoleculeViewer from './MoleculeViewer'
+import { getExtByName } from '@/utils'
+
+import { MaterialMain } from './matmodeler/main/index'
 
 const API_BASE_URL = ''
 
@@ -452,6 +455,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
         <div className="flex-1 flex flex-col bg-gray-50 dark:bg-gray-900" style={{ minWidth: '400px' }}>
           {(() => {
             const cached = selectedFilePath ? fileContentCache.get(selectedFilePath) : null
+            console.log('selectedFilePath',selectedFileContent,2,cached)
             
             if (!selectedFilePath) {
               return (
@@ -464,8 +468,23 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
               )
             }
             
-            if (cached && typeof cached === 'object') {
+            if (cached) {
               // Special file types (images, molecules)
+              let content = ''
+              if(typeof cached === 'object'){
+                content = cached?.content || ''
+                // cached.content = undefined
+              }else{
+                content = cached
+                // cached = undefined
+              }
+              // fileContentCache.set(selectedFilePath, null);
+              // setFileContentCache(fileContentCache)
+
+              const name = selectedFilePath?.split('/').pop() || ''
+              
+
+              
               return (
                 <>
                   <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex items-center justify-between">
@@ -477,12 +496,13 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
                     </div>
                   </div>
                   <div className="flex-1 overflow-auto bg-white dark:bg-gray-800">
-                    {cached.type === 'image' && cached.url && (
+                    {/* {cached.type === 'image' && cached.url && (
                       <ImageViewer src={cached.url} alt={selectedFilePath.split('/').pop()} />
                     )}
                     {cached.type === 'molecule' && cached.content && (
-                      <MoleculeViewer content={cached.content} height="600px" />
-                    )}
+                      1 ? <div>14</div> : <MoleculeViewer content={cached.content} height="600px" />
+                    )} */}
+                      <MaterialMain data={content} format={getExtByName(name)}/>
                   </div>
                 </>
               )
