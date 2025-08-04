@@ -22,12 +22,13 @@ async def get_projects(request: Request) -> Dict[str, Any]:
         # 从请求中获取 AK
         access_key, _ = get_ak_info_from_request(request.headers)
         
-        if not access_key:
-            return {
-                "success": False,
-                "error": "未找到 AccessKey",
-                "projects": []
-            }
+        # 注释掉 AccessKey 限制，允许用户自定义填写
+        # if not access_key:
+        #     return {
+        #         "success": False,
+        #         "error": "未找到 AccessKey",
+        #         "projects": []
+        #     }
         
         # 调用 Bohrium API
         headers = {
@@ -99,12 +100,13 @@ async def verify_project(project_id: int, request: Request) -> Dict[str, Any]:
         # 从请求中获取 AK
         access_key, _ = get_ak_info_from_request(request.headers)
         
-        if not access_key:
-            return {
-                "success": False,
-                "error": "未找到 AccessKey",
-                "valid": False
-            }
+        # 注释掉 AccessKey 限制，允许用户自定义填写
+        # if not access_key:
+        #     return {
+        #         "success": False,
+        #         "error": "未找到 AccessKey",
+        #         "valid": False
+        #     }
         
         # 调用 Bohrium API 获取项目列表
         headers = {
@@ -128,30 +130,37 @@ async def verify_project(project_id: int, request: Request) -> Dict[str, Any]:
                         "valid": False
                     }
                 
-                # 检查 project_id 是否在用户的项目列表中
-                items = data.get("data", {}).get("items", [])
-                user_project_ids = [item["id"] for item in items]
+                # 注释掉 project_id 验证机制，允许用户自定义填写任意 project_id
+                # items = data.get("data", {}).get("items", [])
+                # user_project_ids = [item["id"] for item in items]
+                # 
+                # is_valid = project_id in user_project_ids
+                # 
+                # # 如果找到项目，返回项目详情
+                # project_info = None
+                # if is_valid:
+                #     for item in items:
+                #         if item["id"] == project_id:
+                #             project_info = {
+                #                 "id": item["id"],
+                #                 "name": item["name"],
+                #                 "creatorName": item.get("creatorName", ""),
+                #                 "createTime": item.get("createTime", ""),
+                #                 "projectRole": item.get("projectRole", 0)
+                #             }
+                #             break
                 
-                is_valid = project_id in user_project_ids
-                
-                # 如果找到项目，返回项目详情
-                project_info = None
-                if is_valid:
-                    for item in items:
-                        if item["id"] == project_id:
-                            project_info = {
-                                "id": item["id"],
-                                "name": item["name"],
-                                "creatorName": item.get("creatorName", ""),
-                                "createTime": item.get("createTime", ""),
-                                "projectRole": item.get("projectRole", 0)
-                            }
-                            break
-                
+                # 直接返回 valid=True，允许任何 project_id
                 return {
                     "success": True,
-                    "valid": is_valid,
-                    "project": project_info
+                    "valid": True,
+                    "project": {
+                        "id": project_id,
+                        "name": f"项目 {project_id}（用户自定义）",
+                        "creatorName": "未知",
+                        "createTime": "",
+                        "projectRole": 1
+                    }
                 }
                 
     except aiohttp.ClientTimeout:

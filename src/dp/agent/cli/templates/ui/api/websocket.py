@@ -20,45 +20,49 @@ BOHRIUM_API_BASE = "https://openapi.dp.tech/openapi/v1"
 
 
 async def verify_user_project(access_key: str, project_id: int) -> bool:
-    """验证 project_id 是否属于当前用户
+    """验证 project_id 是否属于当前用户（已注释验证逻辑，直接返回 True）
     
     Args:
         access_key: 用户的 AccessKey
         project_id: 待验证的项目 ID
         
     Returns:
-        bool: 如果 project_id 属于用户则返回 True，否则返回 False
+        bool: 总是返回 True，允许用户自定义任意 project_id
     """
-    if not access_key or not project_id:
-        return False
-        
-    try:
-        headers = {
-            "AccessKey": access_key,
-            "Content-Type": "application/json"
-        }
-        
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
-                f"{BOHRIUM_API_BASE}/project/list",
-                headers=headers,
-                timeout=aiohttp.ClientTimeout(total=10)
-            ) as response:
-                data = await response.json()
-                
-                if data.get("code") != 0:
-                    logger.error(f"获取项目列表失败: {data}")
-                    return False
-                
-                # 检查 project_id 是否在用户的项目列表中
-                items = data.get("data", {}).get("items", [])
-                user_project_ids = [item["id"] for item in items]
-                
-                return project_id in user_project_ids
-                
-    except Exception as e:
-        logger.error(f"验证项目时发生错误: {e}")
-        return False
+    # 注释掉原有验证逻辑，直接返回 True 允许任意 project_id
+    # if not access_key or not project_id:
+    #     return False
+    #     
+    # try:
+    #     headers = {
+    #         "AccessKey": access_key,
+    #         "Content-Type": "application/json"
+    #     }
+    #     
+    #     async with aiohttp.ClientSession() as session:
+    #         async with session.get(
+    #             f"{BOHRIUM_API_BASE}/project/list",
+    #             headers=headers,
+    #             timeout=aiohttp.ClientTimeout(total=10)
+    #         ) as response:
+    #             data = await response.json()
+    #             
+    #             if data.get("code") != 0:
+    #                 logger.error(f"获取项目列表失败: {data}")
+    #                 return False
+    #             
+    #             # 检查 project_id 是否在用户的项目列表中
+    #             items = data.get("data", {}).get("items", [])
+    #             user_project_ids = [item["id"] for item in items]
+    #             
+    #             return project_id in user_project_ids
+    #             
+    # except Exception as e:
+    #     logger.error(f"验证项目时发生错误: {e}")
+    #     return False
+    
+    # 直接返回 True，允许任意 project_id
+    return True
 
 
 async def websocket_endpoint(websocket: WebSocket):
@@ -161,16 +165,16 @@ async def websocket_endpoint(websocket: WebSocket):
                         # 确保 project_id 是整数
                         project_id_int = int(project_id)
                         
-                        # 验证 project_id 是否属于当前用户
-                        is_valid = await verify_user_project(access_key, project_id_int)
-                        
-                        if not is_valid:
-                            logger.warning(f"用户 {context.user_id} 尝试设置无权限的 project_id: {project_id_int}")
-                            await websocket.send_json({
-                                "type": "error",
-                                "content": f"您没有权限使用项目 ID: {project_id_int}。请从项目列表中选择您有权限的项目。"
-                            })
-                            return
+                        # 注释掉 project_id 验证，允许用户设置任意 project_id
+                        # is_valid = await verify_user_project(access_key, project_id_int)
+                        # 
+                        # if not is_valid:
+                        #     logger.warning(f"用户 {context.user_id} 尝试设置无权限的 project_id: {project_id_int}")
+                        #     await websocket.send_json({
+                        #         "type": "error",
+                        #         "content": f"您没有权限使用项目 ID: {project_id_int}。请从项目列表中选择您有权限的项目。"
+                        #     })
+                        #     return
                         
                         # 验证通过，设置 project_id
                         context.project_id = project_id_int

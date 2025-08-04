@@ -210,12 +210,12 @@ class SessionManager:
         if context.current_session_id:
             await self.send_session_messages(context, context.current_session_id)
         
-        # 发送 project_id 状态
-        if not context.project_id and not os.environ.get('BOHR_PROJECT_ID'):
-            await context.websocket.send_json({
-                "type": "require_project_id",
-                "content": "需要设置 Project ID 才能使用 Agent"
-            })
+        # 注释掉 project_id 状态检查，允许用户自定义填写
+        # if not context.project_id and not os.environ.get('BOHR_PROJECT_ID'):
+        #     await context.websocket.send_json({
+        #         "type": "require_project_id",
+        #         "content": "需要设置 Project ID 才能使用 Agent"
+        #     })
         
     async def disconnect_client(self, websocket: WebSocket):
         """断开客户端连接"""
@@ -301,11 +301,11 @@ class SessionManager:
     
     async def process_message(self, context: ConnectionContext, message: str):
         """处理用户消息"""
-        # 首先检查是否有 project_id
+        # 检查是否设置了 project_id（必填但不验证所有权）
         if not context.project_id and not os.environ.get('BOHR_PROJECT_ID'):
             await context.websocket.send_json({
                 "type": "error", 
-                "content": "🔒 请先选择您的项目"
+                "content": "🔒 请先设置项目 ID"
             })
             return
         
