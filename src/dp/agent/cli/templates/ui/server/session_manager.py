@@ -179,13 +179,17 @@ class SessionManager:
                     )
                     context.current_session_id = sorted_sessions[0].id if sorted_sessions else None
                     
-                    # 为每个会话异步初始化runner
-                    init_tasks = []
+                    # 为每个会话异步初始化runner，添加错误处理
                     for session_id in historical_sessions:
                         task = asyncio.create_task(self._init_session_runner(context, session_id))
-                        init_tasks.append(task)
+                        # 添加错误处理回调，防止未处理的异常
+                        def handle_init_error(future, sid=session_id):
+                            try:
+                                future.result()
+                            except Exception as e:
+                                logger.error(f"初始化历史会话 {sid} 的Runner时发生错误: {e}", exc_info=True)
+                        task.add_done_callback(handle_init_error)
                     
-                    # 不等待所有任务完成，让它们在后台运行
                     logger.info(f"已恢复 {len(historical_sessions)} 个历史会话，正在后台初始化Runner...")
                 else:
                     # 新的AK用户，创建首个会话
@@ -547,10 +551,10 @@ class SessionManager:
                 for i, sub_exc in enumerate(e.exceptions):
                     logger.error(f"子异常 {i}: {sub_exc}", exc_info=(type(sub_exc), sub_exc, sub_exc.__traceback__))
             
-                await context.websocket.send_json({
-                    "type": "error",
-                    "content": f"处理消息失败: {str(e)}"
-                })
+            await context.websocket.send_json({
+                "type": "error",
+                "content": f"处理消息失败: {str(e)}"
+            })
         
         # 如果有AK，保存会话
         if context.access_key and context.current_session_id:
