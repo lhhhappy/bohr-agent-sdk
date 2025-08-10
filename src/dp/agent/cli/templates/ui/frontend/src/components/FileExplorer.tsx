@@ -1,16 +1,13 @@
 import React, { useState, useCallback } from 'react'
-import { ChevronRight, File, Folder, FileText, Loader2, X, Copy, Check, Maximize2, Minimize2, Image, Atom, FolderOpen } from 'lucide-react'
+import { ChevronRight, File, Folder, FileText, Loader2, X, Copy, Check, Maximize2, Minimize2, Image, Atom, FolderOpen, Globe } from 'lucide-react'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { motion, AnimatePresence } from 'framer-motion'
 import axios from 'axios'
-import ImageViewer from './ImageViewer'
+import HTMLViewer from './HTMLViewer'
 import MoleculeViewer from './MoleculeViewer'
-import { getExtByName } from '@/utils'
-
-import { MaterialMain } from './matmodeler/main/index'
 
 const API_BASE_URL = ''
 
@@ -43,7 +40,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
   const [selectedFileContent, setSelectedFileContent] = useState<string | null>(null)
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null)
   const [loadingFiles, setLoadingFiles] = useState<Set<string>>(new Set())
-  const [fileContentCache, setFileContentCache] = useState<Map<string, string | { type: 'image' | 'molecule'; url?: string; content?: string }>>(new Map())
+  const [fileContentCache, setFileContentCache] = useState<Map<string, string | { type: 'image' | 'molecule' | 'html'; url?: string; content?: string }>>(new Map())
   const [isFileContentExpanded, setIsFileContentExpanded] = useState(false)
   const [copiedCode, setCopiedCode] = useState<string | null>(null)
   // 文件树宽度固定，不再需要调整
@@ -127,6 +124,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
         const ext = path.split('.').pop()?.toLowerCase()
         const isImage = ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'].includes(ext || '')
         const isMolecule = ext === 'xyz'
+        const isHTML = ext === 'html' || ext === 'htm'
         
         if (isImage) {
           // For images, we'll use the file URL directly
@@ -139,6 +137,13 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
             responseType: 'text'
           })
           setFileContentCache(prev => new Map(prev).set(path, { type: 'molecule', content: response.data }))
+          setSelectedFileContent(null)
+        } else if (isHTML) {
+          // For HTML files, fetch the content for safe rendering
+          const response = await axios.get(`${API_BASE_URL}/api/files/${path}`, {
+            responseType: 'text'
+          })
+          setFileContentCache(prev => new Map(prev).set(path, { type: 'html', content: response.data }))
           setSelectedFileContent(null)
         } else {
           // For other files, fetch as text
@@ -181,6 +186,8 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
       'svg': 'text-pink-500',
       'webp': 'text-pink-500',
       'xyz': 'text-cyan-500',
+      'html': 'text-red-500',
+      'htm': 'text-red-500',
     }
     
     const color = colorMap[ext || ''] || 'text-gray-400'
@@ -193,6 +200,11 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
     // Molecule files
     if (ext === 'xyz') {
       return <Atom className={`w-4 h-4 ${color}`} />
+    }
+    
+    // HTML files
+    if (['html', 'htm'].includes(ext || '')) {
+      return <Globe className={`w-4 h-4 ${color}`} />
     }
     
     // Text files
@@ -469,21 +481,8 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
             }
             
             if (cached) {
-              // Special file types (images, molecules)
-              let content = ''
-              if(typeof cached === 'object'){
-                content = cached?.content || ''
-                // cached.content = undefined
-              }else{
-                content = cached
-                // cached = undefined
-              }
-              // fileContentCache.set(selectedFilePath, null);
-              // setFileContentCache(fileContentCache)
-
+              // Special file types (images, molecules, html)
               const name = selectedFilePath?.split('/').pop() || ''
-              
-
               
               return (
                 <>
@@ -496,13 +495,22 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
                     </div>
                   </div>
                   <div className="flex-1 overflow-auto bg-white dark:bg-gray-800">
-                    {/* {cached.type === 'image' && cached.url && (
-                      <ImageViewer src={cached.url} alt={selectedFilePath.split('/').pop()} />
+                    {typeof cached === 'object' && cached.type === 'html' && cached.content && (
+                      <HTMLViewer content={cached.content} fileName={name} />
                     )}
-                    {cached.type === 'molecule' && cached.content && (
-                      1 ? <div>14</div> : <MoleculeViewer content={cached.content} height="600px" />
-                    )} */}
-                      <MaterialMain data={content} format={getExtByName(name)}/>
+                    {typeof cached === 'object' && cached.type === 'molecule' && cached.content && (
+                      <MoleculeViewer content={cached.content} height="100%" />
+                    )}
+                    {typeof cached === 'object' && cached.type === 'image' && cached.url && (
+                      <div className="p-6 flex items-center justify-center h-full">
+                        <img src={cached.url} alt={name} className="max-w-full max-h-full object-contain" />
+                      </div>
+                    )}
+                    {typeof cached === 'string' && (
+                      <div className="p-6">
+                        <pre className="whitespace-pre-wrap text-sm text-gray-700">{cached}</pre>
+                      </div>
+                    )}
                   </div>
                 </>
               )

@@ -9,60 +9,17 @@ from fastapi.websockets import WebSocketDisconnect
 
 from server.utils import get_ak_info_from_request
 from server.session_manager import SessionManager
+from api.projects import verify_user_project
 
 logger = logging.getLogger(__name__)
 
 # 创建全局管理器
 manager = SessionManager()
 
-# Bohrium API 配置
-BOHRIUM_API_BASE = "https://openapi.dp.tech/openapi/v1"
+from bohrium_open_sdk import OpenSDK
+import logging
 
-
-async def verify_user_project(access_key: str, project_id: int) -> bool:
-    """验证 project_id 是否属于当前用户（已注释验证逻辑，直接返回 True）
-    
-    Args:
-        access_key: 用户的 AccessKey
-        project_id: 待验证的项目 ID
-        
-    Returns:
-        bool: 总是返回 True，允许用户自定义任意 project_id
-    """
-    # 注释掉原有验证逻辑，直接返回 True 允许任意 project_id
-    # if not access_key or not project_id:
-    #     return False
-    #     
-    # try:
-    #     headers = {
-    #         "AccessKey": access_key,
-    #         "Content-Type": "application/json"
-    #     }
-    #     
-    #     async with aiohttp.ClientSession() as session:
-    #         async with session.get(
-    #             f"{BOHRIUM_API_BASE}/project/list",
-    #             headers=headers,
-    #             timeout=aiohttp.ClientTimeout(total=10)
-    #         ) as response:
-    #             data = await response.json()
-    #             
-    #             if data.get("code") != 0:
-    #                 logger.error(f"获取项目列表失败: {data}")
-    #                 return False
-    #             
-    #             # 检查 project_id 是否在用户的项目列表中
-    #             items = data.get("data", {}).get("items", [])
-    #             user_project_ids = [item["id"] for item in items]
-    #             
-    #             return project_id in user_project_ids
-    #             
-    # except Exception as e:
-    #     logger.error(f"验证项目时发生错误: {e}")
-    #     return False
-    
-    # 直接返回 True，允许任意 project_id
-    return True
+logger = logging.getLogger(__name__)
 
 
 async def websocket_endpoint(websocket: WebSocket):

@@ -1,1 +1,0 @@
-import{useEffect,useState}from'react';import{BehaviorSubject,Subject}from'rxjs';export function useSubjectState<T>(subject?:Subject<T>|BehaviorSubject<T>):T|undefined{const[state,setState]=useState((subject as BehaviorSubject<T>)?.value);useEffect(()=>{const subscription=subject?.subscribe(setState);return()=>{subscription?.unsubscribe?.()}},[subject]);return state}

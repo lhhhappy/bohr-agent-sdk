@@ -41,8 +41,6 @@ def get_ak_info_from_request(headers) -> Tuple[str, str]:
         logger = logging.getLogger(__name__)
         logger.info(f"从环境变量获取 AK 信息: AK={access_key[:8] if access_key else 'None'}..., APP_KEY={app_key}")
     
-    # 注释掉限制，允许用户在没有 AK 的情况下自定义填写
-    # 返回空字符串，让用户可以在前端自行填写 AccessKey
     return access_key, app_key
 
 
