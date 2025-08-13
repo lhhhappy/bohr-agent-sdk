@@ -31,6 +31,8 @@ class SessionManager:
     USER_MESSAGE_TRUNCATE = 100  # 用户消息截断长度
     ASSISTANT_MESSAGE_TRUNCATE = 150  # 助手消息截断长度
     RESPONSE_PREVIEW_LENGTH = 200  # 响应预览长度
+    AUTO_SAVE_INTERVAL = 30  # 自动保存间隔（秒）
+    
     def __init__(self):
         self.active_connections: Dict[WebSocket, ConnectionContext] = {}
         # Use configuration values
@@ -44,6 +46,8 @@ class SessionManager:
         self.persistent_manager = PersistentSessionManager(user_working_dir, sessions_dir)
         # 初始化用户文件管理器
         self.user_file_manager = UserFileManager(user_working_dir, sessions_dir)
+        # 自动保存任务字典 {websocket: task}
+        self.auto_save_tasks: Dict[WebSocket, asyncio.Task] = {}
         
     async def create_session(self, context: ConnectionContext) -> Session:
         """创建新会话"""
@@ -55,6 +59,16 @@ class SessionManager:
         
         # 异步初始化runner，不阻塞返回
         asyncio.create_task(self._init_session_runner(context, session_id))
+        
+        # 如果是注册用户，立即保存新会话
+        if context.bohrium_user_id:
+            try:
+                user_identifier = context.get_user_identifier()
+                await self.persistent_manager.save_session(user_identifier, session)
+                session.mark_saved()  # 标记为已保存
+                logger.debug(f"新会话已保存: {session_id}")
+            except Exception as e:
+                logger.error(f"保存新会话失败: {e}")
         
         return session
     
@@ -128,6 +142,22 @@ class SessionManager:
         """获取连接的所有会话列表"""
         return list(context.sessions.values())
     
+    def get_context_by_user_id(self, user_id: str) -> Optional[ConnectionContext]:
+        """通过用户ID获取连接上下文"""
+        for context in self.active_connections.values():
+            if context.get_user_identifier() == user_id:
+                return context
+        return None
+    
+    def get_user_identifier_from_request(self, access_key: str = None, app_key: str = None) -> Optional[str]:
+        """从请求信息获取用户标识符（优先从已连接的上下文获取）"""
+        if access_key:
+            # 先查找是否有已连接的用户
+            for context in self.active_connections.values():
+                if context.access_key == access_key:
+                    return context.get_user_identifier()
+        return None
+    
     async def delete_session(self, context: ConnectionContext, session_id: str) -> bool:
         """删除会话"""
         if session_id not in context.sessions:
@@ -136,15 +166,29 @@ class SessionManager:
         # 清理会话
         self._cleanup_session(context, session_id)
         
-        # 如果有AK，同时删除持久化文件
-        if context.access_key:
-            await self.persistent_manager.delete_session(context.access_key, session_id)
+        # 如果有用户ID，同时删除持久化文件
+        user_identifier = context.get_user_identifier()
+        if context.bohrium_user_id:  # 只为注册用户保存
+            await self.persistent_manager.delete_session(user_identifier, session_id)
         
         return True
     
     async def switch_session(self, context: ConnectionContext, session_id: str) -> bool:
         """切换当前会话"""
         if session_id in context.sessions:
+            # 保存当前会话（如果有）
+            if context.bohrium_user_id and context.current_session_id:
+                old_session = context.sessions.get(context.current_session_id)
+                if old_session:
+                    try:
+                        user_identifier = context.get_user_identifier()
+                        await self.persistent_manager.save_session(user_identifier, old_session)
+                        old_session.mark_saved()  # 标记为已保存
+                        logger.debug(f"切换前保存会话: {context.current_session_id}")
+                    except Exception as e:
+                        logger.error(f"保存会话失败: {e}")
+            
+            # 切换到新会话
             context.current_session_id = session_id
             return True
         return False
@@ -157,13 +201,24 @@ class SessionManager:
         context = ConnectionContext(websocket, access_key, app_key)
         self.active_connections[websocket] = context
         
-        # 加载历史会话（如果有AK）
-        if access_key:
-            logger.info(f"有AK用户连接: {context.user_id}, AK: {access_key[:8]}...")
+        # 异步初始化用户信息
+        await context.init_bohrium_user_id()
+        
+        # 启动自动保存任务（只为注册用户）
+        if context.bohrium_user_id:
+            self.auto_save_tasks[websocket] = asyncio.create_task(
+                self._auto_save_sessions(context)
+            )
+            logger.info(f"启动自动保存任务，间隔 {self.AUTO_SAVE_INTERVAL} 秒")
+        
+        # 加载历史会话（如果有用户ID）
+        user_identifier = context.get_user_identifier()
+        if context.bohrium_user_id:  # 只为注册用户加载历史
+            logger.info(f"注册用户连接: {context.bohrium_user_id}, AK: {access_key[:8] if access_key else 'N/A'}...")
             logger.info("正在加载历史会话...")
             
             try:
-                historical_sessions = await self.persistent_manager.load_user_sessions(access_key)
+                historical_sessions = await self.persistent_manager.load_user_sessions(user_identifier)
                 
                 if historical_sessions:
                     # 恢复历史会话
@@ -194,7 +249,7 @@ class SessionManager:
                 context.current_session_id = session.id
         else:
             # 临时用户，创建默认会话
-            logger.info(f"临时用户连接（无AK）: {context.user_id}")
+            logger.info(f"临时用户连接: {user_identifier}")
             session = await self.create_session(context)
             context.current_session_id = session.id
         
@@ -217,16 +272,23 @@ class SessionManager:
         if websocket in self.active_connections:
             context = self.active_connections[websocket]
             
-            # 如果有AK，保存所有会话
-            if context.access_key:
+            # 如果有Bohrium用户ID，保存所有会话
+            user_identifier = context.get_user_identifier()
+            if context.bohrium_user_id:  # 只为注册用户保存
                 for session in context.sessions.values():
                     try:
                         await self.persistent_manager.save_session(
-                            context.access_key,
+                            user_identifier,
                             session
                         )
                     except Exception as e:
                         logger.error(f"保存会话失败: {e}")
+            
+            # 取消自动保存任务
+            if websocket in self.auto_save_tasks:
+                self.auto_save_tasks[websocket].cancel()
+                del self.auto_save_tasks[websocket]
+                logger.debug("已取消自动保存任务")
             
             # 清理文件监视器
             context.cleanup()
@@ -235,48 +297,54 @@ class SessionManager:
     
     async def send_sessions_list(self, context: ConnectionContext):
         """发送会话列表到客户端"""
-        sessions_data = []
-        for session in context.sessions.values():
-            sessions_data.append({
-                "id": session.id,
-                "title": session.title,
-                "created_at": session.created_at.isoformat(),
-                "last_message_at": session.last_message_at.isoformat(),
-                "message_count": len(session.messages)
-            })
-        
-        message = {
-            "type": "sessions_list",
-            "sessions": sessions_data,
-            "current_session_id": context.current_session_id
-        }
-        
-        await context.websocket.send_json(message)
+        try:
+            sessions_data = []
+            for session in context.sessions.values():
+                sessions_data.append({
+                    "id": session.id,
+                    "title": session.title,
+                    "created_at": session.created_at.isoformat(),
+                    "last_message_at": session.last_message_at.isoformat(),
+                    "message_count": len(session.messages)
+                })
+            
+            message = {
+                "type": "sessions_list",
+                "sessions": sessions_data,
+                "current_session_id": context.current_session_id
+            }
+            
+            await context.websocket.send_json(message)
+        except Exception as e:
+            logger.debug(f"发送会话列表失败（可能是连接已断开）: {e}")
     
     async def send_session_messages(self, context: ConnectionContext, session_id: str):
         """发送会话的历史消息"""
-        session = self.get_session(context, session_id)
-        if not session:
-            return
+        try:
+            session = self.get_session(context, session_id)
+            if not session:
+                return
+                
+            messages_data = []
+            for msg in session.messages:
+                messages_data.append({
+                    "id": msg.id,
+                    "role": msg.role,
+                    "content": msg.content,
+                    "timestamp": msg.timestamp.isoformat(),
+                    "tool_name": msg.tool_name,
+                    "tool_status": msg.tool_status
+                })
             
-        messages_data = []
-        for msg in session.messages:
-            messages_data.append({
-                "id": msg.id,
-                "role": msg.role,
-                "content": msg.content,
-                "timestamp": msg.timestamp.isoformat(),
-                "tool_name": msg.tool_name,
-                "tool_status": msg.tool_status
-            })
-        
-        message = {
-            "type": "session_messages",
-            "session_id": session_id,
-            "messages": messages_data
-        }
-        
-        await context.websocket.send_json(message)
+            message = {
+                "type": "session_messages",
+                "session_id": session_id,
+                "messages": messages_data
+            }
+            
+            await context.websocket.send_json(message)
+        except Exception as e:
+            logger.debug(f"发送会话消息失败（可能是连接已断开）: {e}")
     
     async def send_to_connection(self, context: ConnectionContext, message: dict):
         """发送消息到特定连接"""
@@ -451,11 +519,8 @@ class SessionManager:
         session.add_message("user", message)
         
         # 获取用户特定的文件目录
-        if context.access_key:
-            user_files_dir = self.user_file_manager.get_user_files_dir(access_key=context.access_key)
-        else:
-            # 临时用户，使用 user_id 作为 session_id
-            user_files_dir = self.user_file_manager.get_user_files_dir(session_id=context.user_id)
+        user_identifier = context.get_user_identifier()
+        user_files_dir = self.user_file_manager.get_user_files_dir(user_id=user_identifier)
         
         # 保存当前工作目录
         original_cwd = os.getcwd()
@@ -516,12 +581,47 @@ class SessionManager:
             except Exception as e:
                 logger.error(f"恢复工作目录失败: {e}")
         
-        # 如果有AK，保存会话
-        if context.access_key and context.current_session_id:
+        # 如果有Bohrium用户ID，保存会话
+        if context.bohrium_user_id and context.current_session_id:
             try:
+                user_identifier = context.get_user_identifier()
                 await self.persistent_manager.save_session(
-                    context.access_key,
+                    user_identifier,
                     session
                 )
+                session.mark_saved()  # 标记为已保存
             except Exception as e:
                 logger.error(f"自动保存会话失败: {e}")
+    
+    async def _auto_save_sessions(self, context: ConnectionContext):
+        """定期自动保存会话"""
+        while True:
+            try:
+                # 等待指定间隔
+                await asyncio.sleep(self.AUTO_SAVE_INTERVAL)
+                
+                # 只保存修改过的会话
+                if context.bohrium_user_id and context.sessions:
+                    user_identifier = context.get_user_identifier()
+                    saved_count = 0
+                    modified_count = 0
+                    
+                    for session in context.sessions.values():
+                        if session.is_modified:  # 只保存修改过的会话
+                            modified_count += 1
+                            try:
+                                await self.persistent_manager.save_session(user_identifier, session)
+                                session.mark_saved()  # 标记为已保存
+                                saved_count += 1
+                            except Exception as e:
+                                logger.error(f"自动保存会话 {session.id} 失败: {e}")
+                    
+                    if saved_count > 0:
+                        logger.debug(f"自动保存完成，已保存 {saved_count}/{modified_count} 个修改过的会话")
+                        
+            except asyncio.CancelledError:
+                logger.debug("自动保存任务被取消")
+                break
+            except Exception as e:
+                logger.error(f"自动保存任务异常: {e}")
+                # 继续运行，不要退出

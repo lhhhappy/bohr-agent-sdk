@@ -2,9 +2,7 @@
 用户文件管理器
 """
 import os
-import hashlib
 from pathlib import Path
-from typing import Optional
 import logging
 
 logger = logging.getLogger(__name__)
@@ -21,37 +19,37 @@ class UserFileManager:
             self.sessions_dir = sessions_path
         else:
             self.sessions_dir = self.base_dir / sessions_dir
-        self.ak_sessions_dir = self.sessions_dir / "ak_sessions"
+        self.user_sessions_dir = self.sessions_dir / "user_sessions"
         self.temp_sessions_dir = self.sessions_dir / "temp_sessions"
         
         # 确保目录存在
-        self.ak_sessions_dir.mkdir(parents=True, exist_ok=True)
+        self.user_sessions_dir.mkdir(parents=True, exist_ok=True)
         self.temp_sessions_dir.mkdir(parents=True, exist_ok=True)
     
-    def _get_ak_hash(self, access_key: str) -> str:
-        """生成AK的安全哈希值"""
-        return hashlib.sha256(access_key.encode()).hexdigest()[:16]
+    def _get_user_dir(self, user_id: str) -> str:
+        """获取用户目录名称"""
+        # 直接使用user_id作为目录名
+        return user_id
     
-    def get_user_files_dir(self, access_key: Optional[str] = None, session_id: Optional[str] = None) -> Path:
+    def get_user_files_dir(self, user_id: str) -> Path:
         """获取用户的文件目录
         
         Args:
-            access_key: 用户的 access key
-            session_id: 临时用户的 session ID
+            user_id: 用户的唯一标识符（Bohrium user_id 或临时用户ID）
             
         Returns:
             用户的文件目录路径
         """
-        if access_key:
-            # 有 AK 的用户
-            ak_hash = self._get_ak_hash(access_key)
-            user_files_dir = self.ak_sessions_dir / ak_hash / "files"
-        elif session_id:
-            # 临时用户，使用 session_id
-            user_files_dir = self.temp_sessions_dir / session_id / "files"
-        else:
-            # 如果都没有，使用默认的临时目录
+        if not user_id:
+            # 如果没有user_id，使用默认目录
             user_files_dir = self.temp_sessions_dir / "default" / "files"
+        elif user_id.startswith("user_"):
+            # 临时用户（生成的ID以user_开头）
+            user_files_dir = self.temp_sessions_dir / user_id / "files"
+        else:
+            # 注册用户（Bohrium user_id）
+            user_dir_name = self._get_user_dir(user_id)
+            user_files_dir = self.user_sessions_dir / user_dir_name / "files"
         
         # 确保目录存在
         user_files_dir.mkdir(parents=True, exist_ok=True)

@@ -4,9 +4,11 @@
 import os
 import json
 import logging
+import uuid
 from pathlib import Path
 from fastapi import Request
 from fastapi.responses import JSONResponse, PlainTextResponse, FileResponse
+from bohrium_open_sdk import OpenSDK
 
 from config.agent_config import agentconfig
 from server.utils import get_ak_info_from_request
@@ -21,12 +23,52 @@ files_config = agentconfig.get_files_config()
 sessions_dir = files_config.get('sessionsDir', '.agent_sessions')
 user_file_manager = UserFileManager(user_working_dir, sessions_dir)
 
+# 导入 SessionManager 实例
+from api.websocket import manager
+
+
+def get_user_identifier(access_key: str = None, app_key: str = None, session_id: str = None) -> str:
+    """获取用户唯一标识符"""
+    # 先尝试从已连接的上下文获取
+    if access_key:
+        cached_user_id = manager.get_user_identifier_from_request(access_key, app_key)
+        if cached_user_id:
+            logger.debug(f"从已连接上下文获取用户ID: {cached_user_id}")
+            return cached_user_id
+        else:
+            logger.debug(f"未找到缓存的用户信息，将调用 OpenSDK")
+    
+    # 如果没有缓存，才调用OpenSDK
+    if access_key and app_key:
+        try:
+            # 使用OpenSDK获取用户信息
+            client = OpenSDK(
+                access_key=access_key,
+                app_key=app_key
+            )
+            user_info = client.user.get_info()
+            if user_info and user_info.get('code') == 0:
+                data = user_info.get('data', {})
+                bohrium_user_id = data.get('user_id')
+                if bohrium_user_id:
+                    logger.info(f"调用OpenSDK获取Bohrium用户ID: {bohrium_user_id}")
+                    return bohrium_user_id
+        except Exception as e:
+            logger.error(f"调用OpenSDK获取用户信息失败: {e}")
+    
+    # 如果有session_id，使用它
+    if session_id:
+        return session_id
+    
+    # 都没有的话，生成一个临时ID
+    return f"user_{uuid.uuid4().hex[:8]}"
+
 
 async def get_file_tree(request: Request, path: str = None):
     """获取文件树结构"""
     try:
         # 获取用户身份
-        access_key, _ = get_ak_info_from_request(request.headers)
+        access_key, app_key = get_ak_info_from_request(request.headers)
         
         # 获取 session_id（从 cookie 中）
         session_id = None
@@ -38,8 +80,11 @@ async def get_file_tree(request: Request, path: str = None):
             if "session_id" in simple_cookie:
                 session_id = simple_cookie["session_id"].value
         
+        # 获取用户唯一标识符
+        user_identifier = get_user_identifier(access_key, app_key, session_id)
+        
         # 获取用户特定的文件目录
-        user_files_dir = user_file_manager.get_user_files_dir(access_key, session_id)
+        user_files_dir = user_file_manager.get_user_files_dir(user_identifier)
         
         def build_tree(directory: Path):
             items = []
@@ -80,7 +125,7 @@ async def get_file_tree(request: Request, path: str = None):
                 }
                 tree.append(root_node)
             
-            logger.info(f"返回用户 {access_key[:8] if access_key else session_id or 'default'} 的文件树")
+            logger.info(f"返回用户 {user_identifier} 的文件树")
             return JSONResponse(content=tree)
         else:
             # 处理特定路径请求
@@ -114,7 +159,7 @@ async def get_file_content(request: Request, file_path: str):
     """获取文件内容"""
     try:
         # 获取用户身份
-        access_key, _ = get_ak_info_from_request(request.headers)
+        access_key, app_key = get_ak_info_from_request(request.headers)
         
         # 获取 session_id（从 cookie 中）
         session_id = None
@@ -126,8 +171,11 @@ async def get_file_content(request: Request, file_path: str):
             if "session_id" in simple_cookie:
                 session_id = simple_cookie["session_id"].value
         
+        # 获取用户唯一标识符
+        user_identifier = get_user_identifier(access_key, app_key, session_id)
+        
         # 获取用户特定的文件目录
-        user_files_dir = user_file_manager.get_user_files_dir(access_key, session_id)
+        user_files_dir = user_file_manager.get_user_files_dir(user_identifier)
         
         # 处理文件路径
         if file_path.startswith('/'):
