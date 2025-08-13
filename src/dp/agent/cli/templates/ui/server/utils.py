@@ -6,13 +6,13 @@ from typing import Tuple
 from http.cookies import SimpleCookie
 import socket
 
-
 def get_ak_info_from_request(headers) -> Tuple[str, str]:
     """从请求头中提取AK信息
     
     优先级：
     1. 从 Cookie 中获取（生产环境）
     2. 从环境变量获取（开发调试）
+    3. 返回空字符串允许用户自定义填写（注释掉限制）
     """
     # 首先尝试从 cookie 获取
     cookie_header = headers.get("cookie", "")

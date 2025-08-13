@@ -1,16 +1,16 @@
 import React, { useState, useCallback } from 'react'
-import { ChevronRight, File, Folder, FileText, Loader2, X, Copy, Check, Maximize2, Minimize2, Image, Atom, FolderOpen } from 'lucide-react'
+import { ChevronRight, File, Folder, FileText, Loader2, X, Copy, Check, Maximize2, Minimize2, Image, Atom, FolderOpen, Globe } from 'lucide-react'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { motion, AnimatePresence } from 'framer-motion'
 import axios from 'axios'
-import ImageViewer from './ImageViewer'
+import HTMLViewer from './HTMLViewer'
 import MoleculeViewer from './MoleculeViewer'
-import { getExtByName } from '@/utils'
-
-import { MaterialMain } from './matmodeler/main/index'
+import JsonTreeView from './JsonTreeView'
+import CsvTableView from './CsvTableView'
+import TextViewer from './TextViewer'
 
 const API_BASE_URL = ''
 
@@ -43,7 +43,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
   const [selectedFileContent, setSelectedFileContent] = useState<string | null>(null)
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null)
   const [loadingFiles, setLoadingFiles] = useState<Set<string>>(new Set())
-  const [fileContentCache, setFileContentCache] = useState<Map<string, string | { type: 'image' | 'molecule'; url?: string; content?: string }>>(new Map())
+  const [fileContentCache, setFileContentCache] = useState<Map<string, string | { type: 'image' | 'molecule' | 'html'; url?: string; content?: string }>>(new Map())
   const [isFileContentExpanded, setIsFileContentExpanded] = useState(false)
   const [copiedCode, setCopiedCode] = useState<string | null>(null)
   // 文件树宽度固定，不再需要调整
@@ -127,6 +127,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
         const ext = path.split('.').pop()?.toLowerCase()
         const isImage = ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'].includes(ext || '')
         const isMolecule = ext === 'xyz'
+        const isHTML = ext === 'html' || ext === 'htm'
         
         if (isImage) {
           // For images, we'll use the file URL directly
@@ -139,6 +140,13 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
             responseType: 'text'
           })
           setFileContentCache(prev => new Map(prev).set(path, { type: 'molecule', content: response.data }))
+          setSelectedFileContent(null)
+        } else if (isHTML) {
+          // For HTML files, fetch the content for safe rendering
+          const response = await axios.get(`${API_BASE_URL}/api/files/${path}`, {
+            responseType: 'text'
+          })
+          setFileContentCache(prev => new Map(prev).set(path, { type: 'html', content: response.data }))
           setSelectedFileContent(null)
         } else {
           // For other files, fetch as text
@@ -181,6 +189,8 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
       'svg': 'text-pink-500',
       'webp': 'text-pink-500',
       'xyz': 'text-cyan-500',
+      'html': 'text-red-500',
+      'htm': 'text-red-500',
     }
     
     const color = colorMap[ext || ''] || 'text-gray-400'
@@ -193,6 +203,11 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
     // Molecule files
     if (ext === 'xyz') {
       return <Atom className={`w-4 h-4 ${color}`} />
+    }
+    
+    // HTML files
+    if (['html', 'htm'].includes(ext || '')) {
+      return <Globe className={`w-4 h-4 ${color}`} />
     }
     
     // Text files
@@ -216,30 +231,27 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
     if (ext === 'json') {
       try {
         const jsonData = JSON.parse(content)
+        return <JsonTreeView data={jsonData} name={filePath.split('/').pop()?.replace('.json', '') || 'data'} />
+      } catch (e) {
+        // If JSON is invalid, show as text with error message
         return (
-          <SyntaxHighlighter
-            language="json"
-            style={vscDarkPlus}
-            customStyle={{
-              margin: 0,
-              borderRadius: '0.5rem',
-              fontSize: '0.875rem',
-              lineHeight: '1.5'
-            }}
-            wrapLines={true}
-            wrapLongLines={true}
-          >
-            {JSON.stringify(jsonData, null, 2)}
-          </SyntaxHighlighter>
+          <div>
+            <div className="mb-2 p-2 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded text-sm">
+              JSON 格式错误：{(e as Error).message}
+            </div>
+            <TextViewer content={content} language="json" />
+          </div>
         )
-      } catch {
-        // Fall through to default
       }
+    }
+    
+    if (ext === 'csv') {
+      return <CsvTableView content={content} />
     }
     
     if (ext === 'md') {
       return (
-        <div className="prose prose-sm dark:prose-invert max-w-none">
+        <div className="prose prose-sm dark:prose-invert max-w-none p-6">
           <ReactMarkdown 
             remarkPlugins={[remarkGfm]}
             components={{
@@ -281,33 +293,64 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
       )
     }
     
+    // 对于 txt, log 等纯文本文件，使用 TextViewer
+    if (['txt', 'log', 'text', 'conf', 'ini', 'cfg', 'yaml', 'yml', 'toml'].includes(ext || '')) {
+      return <TextViewer content={content} language={ext} />
+    }
+    
+    // 对于代码文件，使用语法高亮
     const languageMap: { [key: string]: string } = {
       'py': 'python',
       'js': 'javascript',
       'ts': 'typescript',
-      'csv': 'csv',
-      'log': 'log'
+      'tsx': 'typescript',
+      'jsx': 'javascript',
+      'java': 'java',
+      'cpp': 'cpp',
+      'c': 'c',
+      'cs': 'csharp',
+      'php': 'php',
+      'rb': 'ruby',
+      'go': 'go',
+      'rs': 'rust',
+      'sh': 'bash',
+      'bash': 'bash',
+      'sql': 'sql',
+      'html': 'html',
+      'css': 'css',
+      'scss': 'scss',
+      'sass': 'sass',
+      'less': 'less',
+      'xml': 'xml'
     }
     
     const language = languageMap[ext || ''] || 'text'
     
-    return (
-      <SyntaxHighlighter
-        language={language}
-        style={vscDarkPlus}
-        customStyle={{
-          margin: 0,
-          borderRadius: '0.5rem',
-          fontSize: '0.875rem',
-          lineHeight: '1.5'
-        }}
-        showLineNumbers
-        wrapLines={true}
-        wrapLongLines={true}
-      >
-        {content}
-      </SyntaxHighlighter>
-    )
+    // 对于识别的编程语言，使用语法高亮
+    if (languageMap[ext || '']) {
+      return (
+        <div className="p-4">
+          <SyntaxHighlighter
+            language={language}
+            style={vscDarkPlus}
+            customStyle={{
+              margin: 0,
+              borderRadius: '0.5rem',
+              fontSize: '0.875rem',
+              lineHeight: '1.5'
+            }}
+            showLineNumbers
+            wrapLines={true}
+            wrapLongLines={true}
+          >
+            {content}
+          </SyntaxHighlighter>
+        </div>
+      )
+    }
+    
+    // 默认使用 TextViewer
+    return <TextViewer content={content} />
   }
 
   const renderFileTree = (nodes: FileNode[], level = 0) => {
@@ -452,7 +495,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
         </div>
 
         {/* File Content */}
-        <div className="flex-1 flex flex-col bg-gray-50 dark:bg-gray-900" style={{ minWidth: '400px' }}>
+        <div className="flex-1 flex flex-col bg-gray-50 dark:bg-gray-900" style={{ minWidth: '600px' }}>
           {(() => {
             const cached = selectedFilePath ? fileContentCache.get(selectedFilePath) : null
             console.log('selectedFilePath',selectedFileContent,2,cached)
@@ -469,21 +512,8 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
             }
             
             if (cached) {
-              // Special file types (images, molecules)
-              let content = ''
-              if(typeof cached === 'object'){
-                content = cached?.content || ''
-                // cached.content = undefined
-              }else{
-                content = cached
-                // cached = undefined
-              }
-              // fileContentCache.set(selectedFilePath, null);
-              // setFileContentCache(fileContentCache)
-
+              // Special file types (images, molecules, html)
               const name = selectedFilePath?.split('/').pop() || ''
-              
-
               
               return (
                 <>
@@ -496,13 +526,22 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
                     </div>
                   </div>
                   <div className="flex-1 overflow-auto bg-white dark:bg-gray-800">
-                    {/* {cached.type === 'image' && cached.url && (
-                      <ImageViewer src={cached.url} alt={selectedFilePath.split('/').pop()} />
+                    {typeof cached === 'object' && cached.type === 'html' && cached.content && (
+                      <HTMLViewer content={cached.content} fileName={name} />
                     )}
-                    {cached.type === 'molecule' && cached.content && (
-                      1 ? <div>14</div> : <MoleculeViewer content={cached.content} height="600px" />
-                    )} */}
-                      <MaterialMain data={content} format={getExtByName(name)}/>
+                    {typeof cached === 'object' && cached.type === 'molecule' && cached.content && (
+                      <MoleculeViewer content={cached.content} height="100%" />
+                    )}
+                    {typeof cached === 'object' && cached.type === 'image' && cached.url && (
+                      <div className="p-6 flex items-center justify-center h-full">
+                        <img src={cached.url} alt={name} className="max-w-full max-h-full object-contain" />
+                      </div>
+                    )}
+                    {typeof cached === 'string' && (
+                      <div className="flex-1 overflow-auto bg-white dark:bg-gray-800">
+                        {renderFileContent(cached, selectedFilePath || '')}
+                      </div>
+                    )}
                   </div>
                 </>
               )
@@ -544,10 +583,8 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
                       </button>
                     </div>
                   </div>
-                  <div className="flex-1 overflow-auto p-6 bg-white dark:bg-gray-800">
-                    <div className="max-w-none">
-                      {renderFileContent(selectedFileContent, selectedFilePath || '')}
-                    </div>
+                  <div className="flex-1 overflow-auto bg-white dark:bg-gray-800">
+                    {renderFileContent(selectedFileContent, selectedFilePath || '')}
                   </div>
                 </>
               )
