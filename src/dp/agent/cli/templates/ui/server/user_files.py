@@ -13,9 +13,14 @@ logger = logging.getLogger(__name__)
 class UserFileManager:
     """管理用户特定的文件目录"""
     
-    def __init__(self, base_dir: str):
+    def __init__(self, base_dir: str, sessions_dir: str = ".agent_sessions"):
         self.base_dir = Path(base_dir)
-        self.sessions_dir = self.base_dir / ".agent_sessions"
+        # 支持自定义 sessions 目录，可以是绝对路径或相对路径
+        sessions_path = Path(sessions_dir)
+        if sessions_path.is_absolute():
+            self.sessions_dir = sessions_path
+        else:
+            self.sessions_dir = self.base_dir / sessions_dir
         self.ak_sessions_dir = self.sessions_dir / "ak_sessions"
         self.temp_sessions_dir = self.sessions_dir / "temp_sessions"
         

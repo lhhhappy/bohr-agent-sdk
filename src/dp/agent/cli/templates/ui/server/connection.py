@@ -40,7 +40,11 @@ class ConnectionContext:
         try:
             # 获取用户特定的文件目录
             user_working_dir = os.environ.get('USER_WORKING_DIR', os.getcwd())
-            user_file_manager = UserFileManager(user_working_dir)
+            # 从配置中获取 sessions 目录路径
+            from config.agent_config import agentconfig
+            files_config = agentconfig.get_files_config()
+            sessions_dir = files_config.get('sessionsDir', '.agent_sessions')
+            user_file_manager = UserFileManager(user_working_dir, sessions_dir)
             
             # 根据用户身份获取对应的文件目录
             # 注意：这里使用 access_key 或生成的 user_id 作为 session_id 的替代

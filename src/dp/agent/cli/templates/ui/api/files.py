@@ -16,7 +16,10 @@ logger = logging.getLogger(__name__)
 
 # 创建全局的用户文件管理器
 user_working_dir = os.environ.get('USER_WORKING_DIR', Path.cwd())
-user_file_manager = UserFileManager(user_working_dir)
+# 从配置中获取 sessions 目录路径
+files_config = agentconfig.get_files_config()
+sessions_dir = files_config.get('sessionsDir', '.agent_sessions')
+user_file_manager = UserFileManager(user_working_dir, sessions_dir)
 
 
 async def get_file_tree(request: Request, path: str = None):

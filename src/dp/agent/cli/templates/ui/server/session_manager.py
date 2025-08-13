@@ -38,9 +38,12 @@ class SessionManager:
         
         # 初始化持久化管理器
         user_working_dir = os.environ.get('USER_WORKING_DIR', os.getcwd())
-        self.persistent_manager = PersistentSessionManager(user_working_dir)
+        # 从配置中获取 sessions 目录路径
+        files_config = agentconfig.get_files_config()
+        sessions_dir = files_config.get('sessionsDir', '.agent_sessions')
+        self.persistent_manager = PersistentSessionManager(user_working_dir, sessions_dir)
         # 初始化用户文件管理器
-        self.user_file_manager = UserFileManager(user_working_dir)
+        self.user_file_manager = UserFileManager(user_working_dir, sessions_dir)
         
     async def create_session(self, context: ConnectionContext) -> Session:
         """创建新会话"""
