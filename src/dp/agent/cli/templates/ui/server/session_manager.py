@@ -16,6 +16,7 @@ from google.genai import types
 from server.models import Session
 from server.connection import ConnectionContext
 from server.persistence import PersistentSessionManager
+from server.user_files import UserFileManager
 from config.agent_config import agentconfig
 
 logger = logging.getLogger(__name__)
@@ -38,6 +39,8 @@ class SessionManager:
         # 初始化持久化管理器
         user_working_dir = os.environ.get('USER_WORKING_DIR', os.getcwd())
         self.persistent_manager = PersistentSessionManager(user_working_dir)
+        # 初始化用户文件管理器
+        self.user_file_manager = UserFileManager(user_working_dir)
         
     async def create_session(self, context: ConnectionContext) -> Session:
         """创建新会话"""
@@ -444,7 +447,21 @@ class SessionManager:
         # 保存用户消息到会话历史
         session.add_message("user", message)
         
+        # 获取用户特定的文件目录
+        if context.access_key:
+            user_files_dir = self.user_file_manager.get_user_files_dir(access_key=context.access_key)
+        else:
+            # 临时用户，使用 user_id 作为 session_id
+            user_files_dir = self.user_file_manager.get_user_files_dir(session_id=context.user_id)
+        
+        # 保存当前工作目录
+        original_cwd = os.getcwd()
+        
         try:
+            # 切换到用户文件目录
+            os.chdir(user_files_dir)
+            logger.info(f"切换工作目录到用户文件夹: {user_files_dir}")
+            
             # 构建包含历史上下文的消息
             content = self._build_history_context(session, message)
             
@@ -488,6 +505,13 @@ class SessionManager:
                 "type": "error",
                 "content": f"处理消息失败: {str(e)}"
             })
+        finally:
+            # 无论如何都要恢复原工作目录
+            try:
+                os.chdir(original_cwd)
+                logger.info(f"恢复工作目录: {original_cwd}")
+            except Exception as e:
+                logger.error(f"恢复工作目录失败: {e}")
         
         # 如果有AK，保存会话
         if context.access_key and context.current_session_id:

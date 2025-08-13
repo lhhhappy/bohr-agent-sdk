@@ -22,7 +22,7 @@ const ChatInterface: React.FC = () => {
   const [showLoadingDelay, setShowLoadingDelay] = useState(false)
   const [isCreatingSession, setIsCreatingSession] = useState(false)
   const [fileTree, setFileTree] = useState<FileNode[]>([])
-  const [showFileExplorer, setShowFileExplorer] = useState(true) 
+  const [showFileExplorer, setShowFileExplorer] = useState(false) 
   const [projectId, setProjectId] = useState<string>('')
   const [tempProjectId, setTempProjectId] = useState<string>('')
   const [showProjectIdInput, setShowProjectIdInput] = useState(true)
@@ -797,9 +797,9 @@ const ChatInterface: React.FC = () => {
         {showFileExplorer && (
           <ResizablePanel
             direction="horizontal"
-            minSize={400}
-            maxSize={800}
-            defaultSize={600}
+            minSize={600}
+            maxSize={1200}
+            defaultSize={800}
             className="border-l border-gray-200 dark:border-gray-700"
             resizeBarPosition="start"
           >

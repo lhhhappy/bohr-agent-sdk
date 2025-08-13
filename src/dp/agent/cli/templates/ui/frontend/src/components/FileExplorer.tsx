@@ -8,6 +8,9 @@ import { motion, AnimatePresence } from 'framer-motion'
 import axios from 'axios'
 import HTMLViewer from './HTMLViewer'
 import MoleculeViewer from './MoleculeViewer'
+import JsonTreeView from './JsonTreeView'
+import CsvTableView from './CsvTableView'
+import TextViewer from './TextViewer'
 
 const API_BASE_URL = ''
 
@@ -228,30 +231,27 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
     if (ext === 'json') {
       try {
         const jsonData = JSON.parse(content)
+        return <JsonTreeView data={jsonData} name={filePath.split('/').pop()?.replace('.json', '') || 'data'} />
+      } catch (e) {
+        // If JSON is invalid, show as text with error message
         return (
-          <SyntaxHighlighter
-            language="json"
-            style={vscDarkPlus}
-            customStyle={{
-              margin: 0,
-              borderRadius: '0.5rem',
-              fontSize: '0.875rem',
-              lineHeight: '1.5'
-            }}
-            wrapLines={true}
-            wrapLongLines={true}
-          >
-            {JSON.stringify(jsonData, null, 2)}
-          </SyntaxHighlighter>
+          <div>
+            <div className="mb-2 p-2 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded text-sm">
+              JSON 格式错误：{(e as Error).message}
+            </div>
+            <TextViewer content={content} language="json" />
+          </div>
         )
-      } catch {
-        // Fall through to default
       }
+    }
+    
+    if (ext === 'csv') {
+      return <CsvTableView content={content} />
     }
     
     if (ext === 'md') {
       return (
-        <div className="prose prose-sm dark:prose-invert max-w-none">
+        <div className="prose prose-sm dark:prose-invert max-w-none p-6">
           <ReactMarkdown 
             remarkPlugins={[remarkGfm]}
             components={{
@@ -293,33 +293,64 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
       )
     }
     
+    // 对于 txt, log 等纯文本文件，使用 TextViewer
+    if (['txt', 'log', 'text', 'conf', 'ini', 'cfg', 'yaml', 'yml', 'toml'].includes(ext || '')) {
+      return <TextViewer content={content} language={ext} />
+    }
+    
+    // 对于代码文件，使用语法高亮
     const languageMap: { [key: string]: string } = {
       'py': 'python',
       'js': 'javascript',
       'ts': 'typescript',
-      'csv': 'csv',
-      'log': 'log'
+      'tsx': 'typescript',
+      'jsx': 'javascript',
+      'java': 'java',
+      'cpp': 'cpp',
+      'c': 'c',
+      'cs': 'csharp',
+      'php': 'php',
+      'rb': 'ruby',
+      'go': 'go',
+      'rs': 'rust',
+      'sh': 'bash',
+      'bash': 'bash',
+      'sql': 'sql',
+      'html': 'html',
+      'css': 'css',
+      'scss': 'scss',
+      'sass': 'sass',
+      'less': 'less',
+      'xml': 'xml'
     }
     
     const language = languageMap[ext || ''] || 'text'
     
-    return (
-      <SyntaxHighlighter
-        language={language}
-        style={vscDarkPlus}
-        customStyle={{
-          margin: 0,
-          borderRadius: '0.5rem',
-          fontSize: '0.875rem',
-          lineHeight: '1.5'
-        }}
-        showLineNumbers
-        wrapLines={true}
-        wrapLongLines={true}
-      >
-        {content}
-      </SyntaxHighlighter>
-    )
+    // 对于识别的编程语言，使用语法高亮
+    if (languageMap[ext || '']) {
+      return (
+        <div className="p-4">
+          <SyntaxHighlighter
+            language={language}
+            style={vscDarkPlus}
+            customStyle={{
+              margin: 0,
+              borderRadius: '0.5rem',
+              fontSize: '0.875rem',
+              lineHeight: '1.5'
+            }}
+            showLineNumbers
+            wrapLines={true}
+            wrapLongLines={true}
+          >
+            {content}
+          </SyntaxHighlighter>
+        </div>
+      )
+    }
+    
+    // 默认使用 TextViewer
+    return <TextViewer content={content} />
   }
 
   const renderFileTree = (nodes: FileNode[], level = 0) => {
@@ -464,7 +495,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
         </div>
 
         {/* File Content */}
-        <div className="flex-1 flex flex-col bg-gray-50 dark:bg-gray-900" style={{ minWidth: '400px' }}>
+        <div className="flex-1 flex flex-col bg-gray-50 dark:bg-gray-900" style={{ minWidth: '600px' }}>
           {(() => {
             const cached = selectedFilePath ? fileContentCache.get(selectedFilePath) : null
             console.log('selectedFilePath',selectedFileContent,2,cached)
@@ -507,8 +538,8 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
                       </div>
                     )}
                     {typeof cached === 'string' && (
-                      <div className="p-6">
-                        <pre className="whitespace-pre-wrap text-sm text-gray-700">{cached}</pre>
+                      <div className="flex-1 overflow-auto bg-white dark:bg-gray-800">
+                        {renderFileContent(cached, selectedFilePath || '')}
                       </div>
                     )}
                   </div>
@@ -552,10 +583,8 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
                       </button>
                     </div>
                   </div>
-                  <div className="flex-1 overflow-auto p-6 bg-white dark:bg-gray-800">
-                    <div className="max-w-none">
-                      {renderFileContent(selectedFileContent, selectedFilePath || '')}
-                    </div>
+                  <div className="flex-1 overflow-auto bg-white dark:bg-gray-800">
+                    {renderFileContent(selectedFileContent, selectedFilePath || '')}
                   </div>
                 </>
               )
