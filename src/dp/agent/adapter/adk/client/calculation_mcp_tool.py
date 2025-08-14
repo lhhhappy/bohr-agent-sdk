@@ -49,6 +49,7 @@ class CalculationMCPTool(MCPTool):
         results_tool: Optional[MCPTool] = None,
         query_interval: int = 10,
         logging_callback: Callable = logging_handler,
+        override: bool = True,
     ):
         """Calculation MCP tool
         extended from google.adk.tools.mcp_tool.MCPTool
@@ -71,6 +72,7 @@ class CalculationMCPTool(MCPTool):
             results_tool: The tool of getting job results
             query_interval: Time interval of querying job status
             logging_callback: Callback function for server notifications
+            override: Override storage and executor in tool params or not
         """
         self.executor = executor
         self.storage = storage
@@ -82,6 +84,7 @@ class CalculationMCPTool(MCPTool):
         self.query_interval = query_interval
         self.wait = wait
         self.logging_callback = logging_callback
+        self.override = override
 
     async def log(self, level: str, message: Any, tool_context: ToolContext):
         await self.logging_callback(types.LoggingMessageNotificationParams(
@@ -90,9 +93,9 @@ class CalculationMCPTool(MCPTool):
     async def run_async(self, args, tool_context: ToolContext, **kwargs):
         # TODO: add progress callback when run_async
         args = deepcopy(args)
-        if "executor" not in args:
+        if self.override or "executor" not in args:
             args["executor"] = self.executor
-        if "storage" not in args:
+        if self.override or "storage" not in args:
             args["storage"] = self.storage
         if not self.async_mode and self.wait:
             return await super().run_async(
@@ -155,6 +158,7 @@ class CalculationMCPToolset(MCPToolset):
         async_mode: bool = False,
         wait: bool = True,
         logging_callback: Callable = logging_handler,
+        override: bool = True,
         **kwargs,
     ):
         """
@@ -174,7 +178,9 @@ class CalculationMCPToolset(MCPToolset):
                 tools
             async_mode: Submit and query until the job finishes, instead of
                 waiting in single connection
+            wait: Wait for the job to finish or directly return
             logging_callback: Callback function for server notifications
+            override: Override storage and executor in tool params or not
         """
         super().__init__(**kwargs)
         self.logging_callback = logging_callback
@@ -191,6 +197,7 @@ class CalculationMCPToolset(MCPToolset):
         self.query_tool = None
         self.terminate_tool = None
         self.results_tool = None
+        self.override = override
 
     async def get_tools(self, *args, **kwargs) -> List[CalculationMCPTool]:
         tools = await super().get_tools(*args, **kwargs)
@@ -213,6 +220,7 @@ class CalculationMCPToolset(MCPToolset):
                 terminate_tool=tools.get("terminate_job"),
                 results_tool=tools.get("get_job_results"),
                 logging_callback=self.logging_callback,
+                override=self.override,
             )
             calc_tool.__dict__.update(tool.__dict__)
             calc_tool.is_long_running = not self.wait
