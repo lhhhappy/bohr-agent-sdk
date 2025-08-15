@@ -34,6 +34,8 @@ class Tee(io.TextIOBase):
 
 def wrapped_fn(fn, kwargs, redirect_file=None):
     pid = os.getpid()
+    # explicitly reload dflow config
+    reload_dflow_config()
     if redirect_file:
         stdout = sys.stdout
         flog = open(redirect_file, "w")
@@ -61,7 +63,8 @@ def reload_dflow_config():
         s3_config = sys.modules["dflow"].s3_config
         s3_config["storage_client"] = None
         importlib.reload(sys.modules["dflow.config"])
-        if "dflow.plugins.bohrium" in sys.modules:
+        reload_bohrium = "dflow.plugins.bohrium" in sys.modules
+        if reload_bohrium:
             bohrium_config = sys.modules["dflow.plugins.bohrium"].config
             importlib.reload(sys.modules["dflow.plugins.bohrium"])
         importlib.reload(sys.modules["dflow"])
@@ -69,7 +72,7 @@ def reload_dflow_config():
         sys.modules["dflow"].config = config
         s3_config.update(sys.modules["dflow"].s3_config)
         sys.modules["dflow"].s3_config = s3_config
-        if "dflow.plugins.bohrium" in sys.modules:
+        if reload_bohrium:
             bohrium_config.update(sys.modules["dflow.plugins.bohrium"].config)
             sys.modules["dflow.plugins.bohrium"].config = bohrium_config
 
@@ -127,7 +130,12 @@ class LocalExecutor(BaseExecutor):
                         extra_info["workflow_link"] = wf_link
                         break
                 if not alive:
-                    break
+                    if os.path.isfile("err"):
+                        with open("err", "r") as f:
+                            err_msg = f.read()
+                    else:
+                        err_msg = "No workflow submitted"
+                    raise RuntimeError(err_msg)
                 logger.info("Waiting workflow to be submitted")
                 time.sleep(1)
         self.recover_env(old_env)
@@ -167,7 +175,7 @@ class LocalExecutor(BaseExecutor):
         os.environ["DP_AGENT_RUNNING_MODE"] = "1"
         old_env = self.set_env()
         try:
-            # explicitly reload dflow config in sync mode
+            # explicitly reload dflow config
             reload_dflow_config()
             if inspect.iscoroutinefunction(fn):
                 result = await fn(**kwargs)
