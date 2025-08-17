@@ -12,6 +12,7 @@ interface MessageProps {
   isStreaming?: boolean;
   tool_name?: string;
   tool_status?: string;
+  tool_args?: any;
 }
 
 export const MemoizedMessage = React.memo<MessageProps>(({
@@ -21,7 +22,8 @@ export const MemoizedMessage = React.memo<MessageProps>(({
   isLastMessage = false,
   isStreaming = false,
   tool_name,
-  tool_status
+  tool_status,
+  tool_args
 }) => {
   return (
     <>
@@ -46,6 +48,7 @@ export const MemoizedMessage = React.memo<MessageProps>(({
               toolName={tool_name}
               status={tool_status}
               result={content || undefined}
+              args={tool_args}
             />
           ) : role === 'assistant' ? (
             <div className="prose prose-gray dark:prose-invert max-w-none">
@@ -82,7 +85,8 @@ export const MemoizedMessage = React.memo<MessageProps>(({
          prevProps.isStreaming === nextProps.isStreaming &&
          prevProps.isLastMessage === nextProps.isLastMessage &&
          prevProps.tool_name === nextProps.tool_name &&
-         prevProps.tool_status === nextProps.tool_status;
+         prevProps.tool_status === nextProps.tool_status &&
+         JSON.stringify(prevProps.tool_args) === JSON.stringify(nextProps.tool_args);
 });
 
 MemoizedMessage.displayName = 'MemoizedMessage';

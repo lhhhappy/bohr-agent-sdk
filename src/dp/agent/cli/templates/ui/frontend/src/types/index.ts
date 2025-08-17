@@ -6,6 +6,7 @@ export interface Message {
   timestamp: Date
   tool_name?: string
   tool_status?: string
+  tool_args?: any  // 工具调用参数
   isStreaming?: boolean
 }
 
@@ -125,6 +126,20 @@ export interface ToolMessage extends BaseWSMessage {
   result?: string
 }
 
+export interface ToolCallMessage extends BaseWSMessage {
+  type: 'tool_call'
+  tool_name: string
+  args: any
+  status: string
+}
+
+export interface ToolResponseMessage extends BaseWSMessage {
+  type: 'tool_response'
+  tool_name: string
+  result: string
+  status: string
+}
+
 // 联合类型，包含所有可能的消息类型
 export type WSMessage = 
   | SessionCreatedMessage 
@@ -136,6 +151,8 @@ export type WSMessage =
   | SessionsMessage
   | MessagesMessage
   | ToolMessage
+  | ToolCallMessage
+  | ToolResponseMessage
   | BaseWSMessage  // 兜底类型，用于未知的消息类型
 
 // Connection Status

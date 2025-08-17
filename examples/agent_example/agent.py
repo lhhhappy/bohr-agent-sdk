@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 import arxiv
 import json
 from typing import List
+import time
 
 PAPER_DIR = "output/papers"
 
@@ -26,7 +27,7 @@ def search_papers(topic: str, max_results: int = 5) -> List[str]:
     Returns:
         List of paper IDs found in the search
     """
-
+    time.sleep(10)
     # Use arxiv to find the papers
     client = arxiv.Client()
     # Search for the most relevant articles matching the queried topic

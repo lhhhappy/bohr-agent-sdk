@@ -353,10 +353,18 @@ const ChatInterface: React.FC = () => {
       const messages = (data as any).messages || []
       console.log('Loading session messages:', messages)
       const processedMessages = messages.map((msg: any) => {
+        // 确定消息角色：优先使用 role 字段，如果没有则使用 type 字段
+        let role = msg.role || msg.type
+        
+        // 确保 tool 类型的消息正确标记
+        if (msg.type === 'tool') {
+          role = 'tool'
+        }
+        
         const processed = {
           id: msg.id,
-          role: msg.role,
-          content: msg.content,
+          role: role,
+          content: msg.content || '',
           timestamp: new Date(msg.timestamp),
           // 保留工具相关字段
           tool_name: msg.tool_name,
@@ -386,10 +394,11 @@ const ChatInterface: React.FC = () => {
       // Tool execution status
       const { tool_name, status } = data
       const result = 'result' in data ? (data as any).result : undefined
-      // 对于工具消息，我们传递原始结果，让 ToolResultDisplay 组件处理展示
+      const args = 'args' in data ? (data as any).args : undefined  // 获取工具调用参数
       const content = result || ''
       
-      // 使用基于工具名称和会话的唯一ID，这样同一工具的状态更新会替换而不是新增
+      console.log('收到工具消息:', { tool_name, status, hasResult: !!result, hasArgs: !!args })
+      
       const toolId = `tool-${currentSessionId}-${tool_name}`
       
       const toolMessage: Message = {
@@ -398,23 +407,27 @@ const ChatInterface: React.FC = () => {
         content,
         timestamp: new Date(timestamp || Date.now()),
         tool_name,
-        tool_status: status
+        tool_status: status,
+        tool_args: args  // 保存工具调用参数
       }
       
-      // 使用函数式更新，检查是否需要更新现有的工具消息
       setMessages(prev => {
         const existingIndex = prev.findIndex(m => m.id === toolId)
         if (existingIndex >= 0) {
-          // 更新现有消息
+          // 更新现有消息，保留之前的 tool_args
           const updated = [...prev]
-          updated[existingIndex] = toolMessage
+          updated[existingIndex] = {
+            ...updated[existingIndex],
+            ...toolMessage,
+            // 保留之前的 tool_args（如果新消息没有 args）
+            tool_args: args || updated[existingIndex].tool_args
+          }
           return updated
         } else {
           // 添加新消息
           return [...prev, toolMessage]
         }
       })
-      // 工具消息后滚动到底部
       scrollToBottom()
       return
     }
@@ -726,6 +739,7 @@ const ChatInterface: React.FC = () => {
                       isStreaming={message.isStreaming}
                       tool_name={message.tool_name}
                       tool_status={message.tool_status}
+                      tool_args={message.tool_args}
                     />
                   </motion.div>
                 ))}

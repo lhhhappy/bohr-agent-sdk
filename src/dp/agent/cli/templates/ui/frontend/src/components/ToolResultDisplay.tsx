@@ -7,6 +7,7 @@ interface ToolResultDisplayProps {
   toolName: string;
   status: string;
   result?: string;
+  args?: any;
   isLongRunning?: boolean;
 }
 
@@ -14,9 +15,11 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({
   toolName,
   status,
   result,
+  args,
   isLongRunning = false
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [isArgsExpanded, setIsArgsExpanded] = useState(false);
   // 解析结果内容，处理特殊格式
   const formatResult = (content: string) => {
     // 尝试解析 JSON
@@ -110,14 +113,24 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({
             </span>
           </div>
         </div>
-        {/* 展开/收起按钮 */}
-        {result && status === 'completed' && (
+        {/* 统一的展开/收起按钮 */}
+        {((result && status === 'completed') || (args && (status === 'executing' || status === 'running' || status === 'started'))) && (
           <button
-            onClick={() => setIsExpanded(!isExpanded)}
+            onClick={() => {
+              if (status === 'completed') {
+                setIsExpanded(!isExpanded)
+              } else {
+                setIsArgsExpanded(!isArgsExpanded)
+              }
+            }}
             className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors text-gray-600 dark:text-gray-400"
-            title={isExpanded ? '收起结果' : '展开结果'}
+            title={
+              status === 'completed' 
+                ? (isExpanded ? '收起结果' : '展开结果')
+                : (isArgsExpanded ? '收起参数' : '展开参数')
+            }
           >
-            {isExpanded ? (
+            {(status === 'completed' ? isExpanded : isArgsExpanded) ? (
               <ChevronUp className="w-5 h-5" />
             ) : (
               <ChevronDown className="w-5 h-5" />
@@ -125,6 +138,37 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({
           </button>
         )}
       </div>
+
+      {/* 工具参数 - 在执行中状态时可展开/收起 */}
+      {args && (status === 'executing' || status === 'running' || status === 'started') && (
+        <AnimatePresence mode="wait">
+          {isArgsExpanded && (
+            <motion.div
+              initial={{ opacity: 0, maxHeight: 0 }}
+              animate={{ opacity: 1, maxHeight: 500 }}
+              exit={{ opacity: 0, maxHeight: 0 }}
+              transition={{
+                maxHeight: {
+                  type: "spring",
+                  damping: 25,
+                  stiffness: 200
+                },
+                opacity: {
+                  duration: 0.2
+                }
+              }}
+              className="overflow-hidden"
+            >
+              <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+                <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">调用参数:</div>
+                <div className="bg-white dark:bg-gray-800 rounded-md p-3 shadow-inner">
+                  <JsonDisplay data={args} />
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      )}
 
       {/* 工具结果 */}
       <AnimatePresence mode="wait">
@@ -147,6 +191,16 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({
             className="overflow-hidden"
           >
             <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+              {/* 如果有参数，在结果中也展示 */}
+              {args && (
+                <>
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">调用参数:</div>
+                  <div className="bg-white dark:bg-gray-800 rounded-md p-2 shadow-inner mb-3">
+                    <JsonDisplay data={args} />
+                  </div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">执行结果:</div>
+                </>
+              )}
               <div className="bg-white dark:bg-gray-800 rounded-md p-3 shadow-inner">
                 {formatResult(result)}
               </div>
