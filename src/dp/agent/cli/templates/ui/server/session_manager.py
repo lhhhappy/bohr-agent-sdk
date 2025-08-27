@@ -20,7 +20,8 @@ from server.user_files import UserFileManager
 from config.agent_config import agentconfig
 
 # 配置日志输出到文件
-log_file_path = '/Users/lhappy/workbench/bohr-agent-sdk/websocket.log'
+# 使用相对于项目根目录的路径或环境变量配置
+log_file_path = os.environ.get('WEBSOCKET_LOG_PATH', './websocket.log')
 logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',

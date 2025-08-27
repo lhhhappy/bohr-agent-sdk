@@ -15,7 +15,8 @@ import importlib
 import importlib.util
 
 # 配置日志输出到文件
-log_file_path = '/Users/lhappy/workbench/bohr-agent-sdk/websocket.log'
+# 使用相对于项目根目录的路径或环境变量配置
+log_file_path = os.environ.get('WEBSOCKET_LOG_PATH', './websocket.log')
 # 只在没有配置过的情况下配置
 if not logging.getLogger().handlers:
     logging.basicConfig(
