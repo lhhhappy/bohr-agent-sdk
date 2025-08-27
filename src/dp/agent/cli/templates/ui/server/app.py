@@ -12,7 +12,7 @@ from server.middleware import RequestLoggingMiddleware, HostValidationMiddleware
 from config.agent_config import agentconfig
 
 # Import all API endpoints
-from api import websocket, files, sessions, config as config_api, projects
+from api import websocket, files, sessions, config as config_api, projects, debug
 
 
 def create_app() -> FastAPI:
@@ -59,9 +59,18 @@ def create_app() -> FastAPI:
     app.get("/api/config")(config_api.get_config)
     app.get("/api/files/tree")(files.get_file_tree)
     app.get("/api/files{file_path:path}")(files.get_file_content)
+    app.get("/api/download/file{file_path:path}")(files.download_file)
+    app.get("/api/download/folder{folder_path:path}")(files.download_folder)
     app.delete("/api/sessions/clear")(sessions.clear_user_sessions)
     app.get("/api/sessions/export")(sessions.export_user_sessions)
     app.get("/api/projects")(projects.get_projects)
+    
+    # Debug routes (only in development)
+    if os.environ.get('DEBUG', '').lower() in ['true', '1', 'yes']:
+        app.get("/api/debug/runners")(debug.get_runner_status)
+        app.get("/api/debug/config")(debug.get_config_status)
+        app.get("/api/debug/sessions")(debug.get_session_status)
+        app.get("/api/debug/test-agent")(debug.test_agent_creation)
     
     # Mount static file service
     # Get UI static file directory

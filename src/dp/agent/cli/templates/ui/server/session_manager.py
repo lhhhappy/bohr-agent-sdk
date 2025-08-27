@@ -5,6 +5,8 @@ import os
 import json
 import uuid
 import asyncio
+import traceback
+import logging
 from typing import Dict, Optional, Any
 from datetime import datetime, timezone
 from pathlib import Path
@@ -16,6 +18,18 @@ from google.adk.sessions import DatabaseSessionService, InMemorySessionService, 
 from server.connection import ConnectionContext
 from server.user_files import UserFileManager
 from config.agent_config import agentconfig
+
+# 配置日志输出到文件
+log_file_path = '/Users/lhappy/workbench/bohr-agent-sdk/websocket.log'
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(log_file_path, encoding='utf-8'),
+        logging.StreamHandler()  # 同时输出到控制台
+    ]
+)
+logger = logging.getLogger(__name__)
 
 
 class SessionManager:
@@ -60,6 +74,9 @@ class SessionManager:
         
         # Runner cache
         self.runners: Dict[str, Runner] = {}
+        
+        # Runner错误缓存
+        self._runner_errors: Dict[str, str] = {}
         
     def _create_session_service(self, user_identifier: str, is_registered: bool):
         """
@@ -295,7 +312,16 @@ class SessionManager:
         # 等待 Runner 初始化
         runner = await self._get_or_wait_runner(context, context.current_session_id)
         if not runner:
-            await self._send_error(context, "会话初始化失败，请重试")
+            error_details = self._runner_errors.get(f"{user_identifier}_{context.current_session_id}", "未知错误")
+            await self._send_error(
+                context, 
+                f"会话初始化失败\n\n可能的原因：\n"
+                f"1. Agent 配置文件路径错误\n"
+                f"2. Agent 模块导入失败\n"
+                f"3. Project ID 无效\n\n"
+                f"错误详情：{error_details}\n\n"
+                f"请检查 config/agent-config.json 中的配置"
+            )
             return
             
         # 更新会话元数据（在处理消息之前）
@@ -393,16 +419,27 @@ class SessionManager:
         
     async def _init_runner(self, context: ConnectionContext, session_id: str):
         """Asynchronously initialize Runner"""
+        user_identifier = context.get_user_identifier()
+        runner_key = f"{user_identifier}_{session_id}"
+        
+        logger.info(f"🚀 开始初始化 Runner: {runner_key}")
+        logger.debug(f"  用户标识: {user_identifier}")
+        logger.debug(f"  会话ID: {session_id}")
+        logger.debug(f"  Access Key: {'有' if context.access_key else '无'}")
+        logger.debug(f"  App Key: {'有' if context.app_key else '无'}")
+        
         try:
-            user_identifier = context.get_user_identifier()
-            runner_key = f"{user_identifier}_{session_id}"
-            
             # Get project_id
             project_id = context.project_id or os.environ.get('BOHR_PROJECT_ID')
             if project_id:
                 project_id = int(project_id) if isinstance(project_id, str) else project_id
+            logger.debug(f"  Project ID: {project_id}")
                 
             # Create agent
+            logger.info(f"📦 创建 Agent...")
+            logger.debug(f"  配置模块: {agentconfig.config.get('agent', {}).get('module')}")
+            logger.debug(f"  Agent名称: {agentconfig.config.get('agent', {}).get('name')}")
+            
             loop = asyncio.get_event_loop()
             user_agent = await loop.run_in_executor(
                 None,
@@ -412,8 +449,17 @@ class SessionManager:
                 project_id
             )
             
+            if not user_agent:
+                raise ValueError("Agent 创建失败: 返回 None")
+            
+            logger.info(f"✅ Agent 创建成功: {type(user_agent).__name__}")
+            
             # Create Runner
+            logger.info(f"🏃 创建 Runner...")
             session_service = self.session_services.get(user_identifier)
+            if not session_service:
+                raise ValueError(f"找不到用户 {user_identifier} 的 SessionService")
+                
             runner = Runner(
                 agent=user_agent,
                 session_service=session_service,
@@ -421,24 +467,57 @@ class SessionManager:
             )
             
             self.runners[runner_key] = runner
+            logger.info(f"✅ Runner 初始化成功: {runner_key}")
+            logger.debug(f"  当前 Runner 数量: {len(self.runners)}")
             
+        except ImportError as e:
+            error_msg = f"❌ 导入错误: {str(e)}\n{traceback.format_exc()}"
+            logger.error(error_msg)
+            # 存储错误信息
+            self._runner_errors[runner_key] = error_msg
         except Exception as e:
-            pass
+            error_msg = f"❌ Runner 初始化失败: {str(e)}\n类型: {type(e).__name__}\n{traceback.format_exc()}"
+            logger.error(error_msg)
+            # 存储错误信息
+            self._runner_errors[runner_key] = error_msg
             
     async def _get_or_wait_runner(self, context: ConnectionContext, session_id: str) -> Optional[Runner]:
         """Get or wait for Runner initialization"""
         user_identifier = context.get_user_identifier()
         runner_key = f"{user_identifier}_{session_id}"
         
+        logger.debug(f"⏳ 等待 Runner 初始化: {runner_key}")
+        
         # Wait for Runner initialization
         retry_count = 0
         max_retries = int(self.MAX_WAIT_TIME / self.WAIT_INTERVAL)
         
         while runner_key not in self.runners and retry_count < max_retries:
+            # 检查是否有错误
+            if runner_key in self._runner_errors:
+                logger.error(f"Runner 初始化已失败: {self._runner_errors[runner_key]}")
+                # 发送详细的错误信息到前端
+                await self._send_error(
+                    context, 
+                    f"会话初始化失败\n\n错误详情：\n{self._runner_errors[runner_key]}"
+                )
+                # 清除错误缓存
+                del self._runner_errors[runner_key]
+                return None
+                
             await asyncio.sleep(self.WAIT_INTERVAL)
             retry_count += 1
             
-        return self.runners.get(runner_key)
+            if retry_count % 10 == 0:  # 每秒记录一次
+                logger.debug(f"  仍在等待... ({retry_count * self.WAIT_INTERVAL:.1f}秒)")
+        
+        runner = self.runners.get(runner_key)
+        if runner:
+            logger.info(f"✅ 获取 Runner 成功: {runner_key}")
+        else:
+            logger.error(f"❌ 超时等待 Runner: {runner_key} (等待了 {self.MAX_WAIT_TIME} 秒)")
+            
+        return runner
         
     async def _update_session_metadata(self, context: ConnectionContext, session: Session, message: str):
         """Correctly update metadata in session.state through append_event"""
@@ -509,7 +588,7 @@ class SessionManager:
                         "status": "executing",
                         "timestamp": datetime.now().isoformat()
                     })
-                    await asyncio.sleep(0.1)
+                    await asyncio.sleep(0.2)
             # 4. Handle function responses (tool execution results)
             function_responses = event.get_function_responses() if hasattr(event, 'get_function_responses') else []
             if function_responses:

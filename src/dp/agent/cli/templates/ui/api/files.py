@@ -2,9 +2,12 @@
 import os
 import json
 import uuid
+import zipfile
+import tempfile
+import shutil
 from pathlib import Path
-from fastapi import Request
-from fastapi.responses import JSONResponse, PlainTextResponse, FileResponse
+from fastapi import Request, Response
+from fastapi.responses import JSONResponse, PlainTextResponse, FileResponse, StreamingResponse
 from bohrium_open_sdk import OpenSDK
 
 from config.agent_config import agentconfig
@@ -209,6 +212,182 @@ async def get_file_content(request: Request, file_path: str):
         else:
             # Binary files
             return FileResponse(file)
+            
+    except Exception as e:
+        return JSONResponse(
+            content={"error": str(e)},
+            status_code=500
+        )
+
+
+async def download_file(request: Request, file_path: str):
+    """下载单个文件"""
+    try:
+        # 获取用户身份
+        access_key, app_key = get_ak_info_from_request(request.headers)
+        
+        # 获取 session_id (从 cookie)
+        session_id = None
+        cookie_header = request.headers.get("cookie", "")
+        if cookie_header:
+            from http.cookies import SimpleCookie
+            simple_cookie = SimpleCookie()
+            simple_cookie.load(cookie_header)
+            if "session_id" in simple_cookie:
+                session_id = simple_cookie["session_id"].value
+        
+        # 获取用户唯一标识符
+        user_identifier = get_user_identifier(access_key, app_key, session_id)
+        
+        # 获取用户特定的文件目录
+        user_files_dir = user_file_manager.get_user_files_dir(user_identifier)
+        
+        # 处理文件路径
+        if file_path.startswith('/'):
+            file = Path(file_path)
+        else:
+            # 相对路径，基于用户目录
+            file = user_files_dir / file_path
+        
+        # 安全检查：确保文件在用户目录内
+        try:
+            file_resolved = file.resolve()
+            user_files_dir_resolved = user_files_dir.resolve()
+            if not str(file_resolved).startswith(str(user_files_dir_resolved)):
+                return JSONResponse(
+                    content={"error": "访问被拒绝"},
+                    status_code=403
+                )
+        except:
+            return JSONResponse(
+                content={"error": "无效的文件路径"},
+                status_code=400
+            )
+            
+        if not file.exists() or not file.is_file():
+            return JSONResponse(
+                content={"error": "文件未找到"},
+                status_code=404
+            )
+        
+        # 获取文件名
+        filename = file.name
+        
+        # 返回文件响应，设置下载头
+        return FileResponse(
+            path=file,
+            filename=filename,
+            media_type='application/octet-stream'
+        )
+            
+    except Exception as e:
+        return JSONResponse(
+            content={"error": str(e)},
+            status_code=500
+        )
+
+
+async def download_folder(request: Request, folder_path: str):
+    """下载文件夹（打包为 zip）"""
+    try:
+        # 获取用户身份
+        access_key, app_key = get_ak_info_from_request(request.headers)
+        
+        # 获取 session_id (从 cookie)
+        session_id = None
+        cookie_header = request.headers.get("cookie", "")
+        if cookie_header:
+            from http.cookies import SimpleCookie
+            simple_cookie = SimpleCookie()
+            simple_cookie.load(cookie_header)
+            if "session_id" in simple_cookie:
+                session_id = simple_cookie["session_id"].value
+        
+        # 获取用户唯一标识符
+        user_identifier = get_user_identifier(access_key, app_key, session_id)
+        
+        # 获取用户特定的文件目录
+        user_files_dir = user_file_manager.get_user_files_dir(user_identifier)
+        
+        # 处理文件夹路径
+        if folder_path.startswith('/'):
+            folder = Path(folder_path)
+        else:
+            # 相对路径，基于用户目录
+            folder = user_files_dir / folder_path
+        
+        # 安全检查：确保文件夹在用户目录内
+        try:
+            folder_resolved = folder.resolve()
+            user_files_dir_resolved = user_files_dir.resolve()
+            if not str(folder_resolved).startswith(str(user_files_dir_resolved)):
+                return JSONResponse(
+                    content={"error": "访问被拒绝"},
+                    status_code=403
+                )
+        except:
+            return JSONResponse(
+                content={"error": "无效的文件夹路径"},
+                status_code=400
+            )
+            
+        if not folder.exists() or not folder.is_dir():
+            return JSONResponse(
+                content={"error": "文件夹未找到"},
+                status_code=404
+            )
+        
+        # 创建临时 zip 文件
+        temp_dir = Path(tempfile.gettempdir())
+        zip_filename = f"{folder.name}_{uuid.uuid4().hex[:8]}.zip"
+        zip_path = temp_dir / zip_filename
+        
+        try:
+            # 创建 zip 文件
+            with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                for root, dirs, files in os.walk(folder):
+                    # 跳过隐藏文件和目录
+                    dirs[:] = [d for d in dirs if not d.startswith('.')]
+                    
+                    for file in files:
+                        if file.startswith('.'):
+                            continue
+                            
+                        file_path = Path(root) / file
+                        # 计算相对路径
+                        arcname = file_path.relative_to(folder)
+                        zipf.write(file_path, arcname=str(arcname))
+            
+            # 返回 zip 文件
+            def cleanup():
+                """清理临时文件"""
+                try:
+                    if zip_path.exists():
+                        zip_path.unlink()
+                except:
+                    pass
+            
+            # 读取文件内容
+            with open(zip_path, 'rb') as f:
+                content = f.read()
+            
+            # 清理临时文件
+            cleanup()
+            
+            # 返回响应
+            return Response(
+                content=content,
+                media_type='application/zip',
+                headers={
+                    'Content-Disposition': f'attachment; filename="{folder.name}.zip"'
+                }
+            )
+            
+        except Exception as e:
+            # 确保清理临时文件
+            if zip_path.exists():
+                zip_path.unlink()
+            raise e
             
     except Exception as e:
         return JSONResponse(

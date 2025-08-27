@@ -1,0 +1,19 @@
+{
+  "agent": {
+    "module": "/Users/lhappy/workbench/AI4S-agent-tools/mcp-agent/agent.py",
+    "rootAgent": "root_agent",
+    "name": "MCP-Agent",
+    "description": "AI Assistant powered by DP Agent SDK",
+    "welcomeMessage": "Designing the Future of AI4S"
+  },
+  "ui": {
+    "title": "MCP-Agent"
+  },
+  "server": {
+    "port": 50001,
+    "host": [
+      "localhost",
+      "127.0.0.1"
+    ]
+  }
+}
