@@ -1,7 +1,8 @@
 import React from 'react';
-import { Bot, User } from 'lucide-react';
+import { Bot, User, FileText, Download } from 'lucide-react';
 import { ToolResultDisplay } from './ToolResultDisplay';
 import { MemoizedMarkdown } from './MemoizedMarkdown';
+import { FileAttachment } from '../types';
 
 interface MessageProps {
   id: string;
@@ -12,6 +13,8 @@ interface MessageProps {
   isStreaming?: boolean;
   tool_name?: string;
   tool_status?: string;
+  tool_args?: any;
+  attachments?: FileAttachment[];
 }
 
 export const MemoizedMessage = React.memo<MessageProps>(({
@@ -21,8 +24,26 @@ export const MemoizedMessage = React.memo<MessageProps>(({
   isLastMessage = false,
   isStreaming = false,
   tool_name,
-  tool_status
+  tool_status,
+  tool_args,
+  attachments
 }) => {
+  // Helper function to format file size
+  const formatFileSize = (bytes: number): string => {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  };
+
+  // Helper function to get file icon color based on MIME type
+  const getFileIconColor = (mimeType: string): string => {
+    if (mimeType.startsWith('image/')) return 'text-pink-500';
+    if (mimeType.includes('pdf')) return 'text-red-500';
+    if (mimeType.includes('json')) return 'text-orange-500';
+    if (mimeType.includes('csv')) return 'text-green-500';
+    if (mimeType.includes('text/')) return 'text-blue-500';
+    return 'text-gray-500';
+  };
   return (
     <>
       {role !== 'user' && (
@@ -46,6 +67,7 @@ export const MemoizedMessage = React.memo<MessageProps>(({
               toolName={tool_name}
               status={tool_status}
               result={content || undefined}
+              args={tool_args}
             />
           ) : role === 'assistant' ? (
             <div className="prose prose-gray dark:prose-invert max-w-none">
@@ -58,7 +80,31 @@ export const MemoizedMessage = React.memo<MessageProps>(({
               </MemoizedMarkdown>
             </div>
           ) : (
-            <p className="text-sm whitespace-pre-wrap">{content}</p>
+            <div>
+              {attachments && attachments.length > 0 && (
+                <div className="mb-2 space-y-1">
+                  {attachments.map((file, idx) => (
+                    <div key={idx} className="flex items-center gap-2 p-2 bg-white/50 dark:bg-gray-700/50 rounded-lg">
+                      <FileText className={`w-4 h-4 ${getFileIconColor(file.mime_type)}`} />
+                      <span className="text-sm font-medium">{file.name}</span>
+                      <span className="text-xs text-gray-500">({formatFileSize(file.size)})</span>
+                      {file.url && (
+                        <a
+                          href={file.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="ml-auto text-blue-500 hover:text-blue-600"
+                          title="下载文件"
+                        >
+                          <Download className="w-3 h-3" />
+                        </a>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+              <p className="text-sm whitespace-pre-wrap">{content}</p>
+            </div>
           )}
         </div>
         <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 px-1">
@@ -82,7 +128,9 @@ export const MemoizedMessage = React.memo<MessageProps>(({
          prevProps.isStreaming === nextProps.isStreaming &&
          prevProps.isLastMessage === nextProps.isLastMessage &&
          prevProps.tool_name === nextProps.tool_name &&
-         prevProps.tool_status === nextProps.tool_status;
+         prevProps.tool_status === nextProps.tool_status &&
+         JSON.stringify(prevProps.tool_args) === JSON.stringify(nextProps.tool_args) &&
+         JSON.stringify(prevProps.attachments) === JSON.stringify(nextProps.attachments);
 });
 
 MemoizedMessage.displayName = 'MemoizedMessage';

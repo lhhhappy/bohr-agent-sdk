@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
-import { Send, Bot, FileText } from 'lucide-react'
+import { Send, Bot, FileText, Paperclip, X } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import SessionList from './SessionList'
 import FileExplorer from './FileExplorer'
@@ -8,7 +8,7 @@ import { useAgentConfig } from '../hooks/useAgentConfig'
 import { MessageAnimation, LoadingDots } from './MessageAnimation'
 import { MemoizedMessage } from './MemoizedMessage'
 import axios from 'axios'
-import { Message, Session, FileNode, WSMessage } from '../types'
+import { Message, Session, FileNode, WSMessage, FileAttachment } from '../types'
 
 const API_BASE_URL = ''  // Use proxy in vite config
 
@@ -32,8 +32,11 @@ const ChatInterface: React.FC = () => {
   const [projects, setProjects] = useState<Array<{id: number, name: string}>>([])
   const [loadingProjects, setLoadingProjects] = useState(false)
   const [projectsError, setProjectsError] = useState<string>('')
+  const [attachments, setAttachments] = useState<FileAttachment[]>([])
+  const [uploading, setUploading] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const messageIdef = useRef<Set<string>>(new Set())
   const loadingTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const isInitialLoad = useRef<boolean>(true)
@@ -293,8 +296,45 @@ const ChatInterface: React.FC = () => {
     }
   }, [ws, connectionStatus])
 
+  const handleFileUpload = async (files: FileList) => {
+    setUploading(true)
+    const formData = new FormData()
+    
+    Array.from(files).forEach(file => {
+      formData.append('files', file)
+    })
+    
+    try {
+      const response = await axios.post(`${API_BASE_URL}/api/upload`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        },
+        withCredentials: true
+      })
+      
+      if (response.data.success) {
+        setAttachments(prev => [...prev, ...response.data.files])
+      }
+    } catch (error: any) {
+      console.error('Upload failed:', error)
+      alert(error.response?.data?.error || '文件上传失败')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const removeAttachment = (index: number) => {
+    setAttachments(prev => prev.filter((_, i) => i !== index))
+  }
+
+  const formatFileSize = (bytes: number): string => {
+    if (bytes < 1024) return bytes + ' B'
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
+  }
+
   const handleSend = () => {
-    if (!input.trim()) return
+    if (!input.trim() && attachments.length === 0) return
     if (!ws || connectionStatus !== 'connected') {
       alert('未连接到服务器，请稍后重试')
       return
@@ -304,7 +344,8 @@ const ChatInterface: React.FC = () => {
       id: Date.now().toString(),
       role: 'user',
       content: input,
-      timestamp: new Date()
+      timestamp: new Date(),
+      attachments: attachments.length > 0 ? attachments : undefined
     }
 
     setMessages(prev => [...prev, newMessage])
@@ -314,11 +355,20 @@ const ChatInterface: React.FC = () => {
     // 发送消息后立即滚动到底部
     scrollToBottom()
 
-    // Send message through WebSocket
-    ws.send(JSON.stringify({
+    // Send message through WebSocket with attachments
+    const messageData: any = {
       type: 'message',
       content: input
-    }))
+    }
+    
+    if (attachments.length > 0) {
+      messageData.attachments = attachments
+    }
+    
+    ws.send(JSON.stringify(messageData))
+    
+    // Clear attachments after sending
+    setAttachments([])
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -353,10 +403,18 @@ const ChatInterface: React.FC = () => {
       const messages = (data as any).messages || []
       console.log('Loading session messages:', messages)
       const processedMessages = messages.map((msg: any) => {
+        // 确定消息角色：优先使用 role 字段，如果没有则使用 type 字段
+        let role = msg.role || msg.type
+        
+        // 确保 tool 类型的消息正确标记
+        if (msg.type === 'tool') {
+          role = 'tool'
+        }
+        
         const processed = {
           id: msg.id,
-          role: msg.role,
-          content: msg.content,
+          role: role,
+          content: msg.content || '',
           timestamp: new Date(msg.timestamp),
           // 保留工具相关字段
           tool_name: msg.tool_name,
@@ -386,10 +444,11 @@ const ChatInterface: React.FC = () => {
       // Tool execution status
       const { tool_name, status } = data
       const result = 'result' in data ? (data as any).result : undefined
-      // 对于工具消息，我们传递原始结果，让 ToolResultDisplay 组件处理展示
+      const args = 'args' in data ? (data as any).args : undefined  // 获取工具调用参数
       const content = result || ''
       
-      // 使用基于工具名称和会话的唯一ID，这样同一工具的状态更新会替换而不是新增
+      console.log('收到工具消息:', { tool_name, status, hasResult: !!result, hasArgs: !!args })
+      
       const toolId = `tool-${currentSessionId}-${tool_name}`
       
       const toolMessage: Message = {
@@ -398,23 +457,27 @@ const ChatInterface: React.FC = () => {
         content,
         timestamp: new Date(timestamp || Date.now()),
         tool_name,
-        tool_status: status
+        tool_status: status,
+        tool_args: args  // 保存工具调用参数
       }
       
-      // 使用函数式更新，检查是否需要更新现有的工具消息
       setMessages(prev => {
         const existingIndex = prev.findIndex(m => m.id === toolId)
         if (existingIndex >= 0) {
-          // 更新现有消息
+          // 更新现有消息，保留之前的 tool_args
           const updated = [...prev]
-          updated[existingIndex] = toolMessage
+          updated[existingIndex] = {
+            ...updated[existingIndex],
+            ...toolMessage,
+            // 保留之前的 tool_args（如果新消息没有 args）
+            tool_args: args || updated[existingIndex].tool_args
+          }
           return updated
         } else {
           // 添加新消息
           return [...prev, toolMessage]
         }
       })
-      // 工具消息后滚动到底部
       scrollToBottom()
       return
     }
@@ -726,6 +789,8 @@ const ChatInterface: React.FC = () => {
                       isStreaming={message.isStreaming}
                       tool_name={message.tool_name}
                       tool_status={message.tool_status}
+                      tool_args={message.tool_args}
+                      attachments={message.attachments}
                     />
                   </motion.div>
                 ))}
@@ -760,7 +825,45 @@ const ChatInterface: React.FC = () => {
         {/* Input Area */}
         <div className="border-t border-gray-200 dark:border-gray-700 glass-premium p-4">
           <div className="max-w-4xl mx-auto">
+            {/* Attachments Preview */}
+            {attachments.length > 0 && (
+              <div className="mb-3 flex flex-wrap gap-2">
+                {attachments.map((file, idx) => (
+                  <div key={idx} className="flex items-center gap-2 bg-gray-100 dark:bg-gray-700 px-3 py-1.5 rounded-lg">
+                    <FileText className="w-4 h-4 text-gray-500" />
+                    <span className="text-sm text-gray-700 dark:text-gray-300">{file.name}</span>
+                    <span className="text-xs text-gray-500">({formatFileSize(file.size)})</span>
+                    <button
+                      onClick={() => removeAttachment(idx)}
+                      className="ml-1 text-gray-500 hover:text-red-500 transition-colors"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            
             <div className="flex gap-3">
+              {/* Hidden file input */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                onChange={(e) => e.target.files && handleFileUpload(e.target.files)}
+                style={{ display: 'none' }}
+              />
+              
+              {/* File upload button */}
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading || connectionStatus !== 'connected'}
+                className="p-3 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors disabled:opacity-50"
+                title="上传文件"
+              >
+                <Paperclip className="w-5 h-5" />
+              </button>
+              
               <textarea
                 ref={inputRef}
                 value={input}
@@ -781,7 +884,7 @@ const ChatInterface: React.FC = () => {
               />
               <button
                 onClick={handleSend}
-                disabled={!input.trim() || isLoading || connectionStatus !== 'connected' || (requireProjectId && !isProjectIdSet)}
+                disabled={(!input.trim() && attachments.length === 0) || isLoading || connectionStatus !== 'connected' || (requireProjectId && !isProjectIdSet)}
                 className="px-4 py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl font-medium hover:from-blue-600 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-lg hover:shadow-xl flex items-center gap-2 btn-animated liquid-button"
                 title={requireProjectId && !isProjectIdSet ? '🔒 请先选择项目' : ''}
               >

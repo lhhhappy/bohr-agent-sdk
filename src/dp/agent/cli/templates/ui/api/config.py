@@ -1,6 +1,4 @@
-"""
-配置相关 API
-"""
+# Configuration API
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
@@ -9,7 +7,7 @@ from config.agent_config import agentconfig
 
 
 async def get_config(request: Request):
-    """获取前端配置信息"""
+    """Get frontend configuration"""
     access_key, _ = get_ak_info_from_request(request.headers)
     return JSONResponse(content={
         "agent": agentconfig.config.get("agent", {}),
@@ -21,7 +19,7 @@ async def get_config(request: Request):
 
 
 async def status():
-    """API 状态"""
+    """API status"""
     return {
         "message": f"{agentconfig.config.get('agent', {}).get('name', 'Agent')} WebSocket 服务器正在运行",
         "mode": "session",

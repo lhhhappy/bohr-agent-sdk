@@ -34,10 +34,10 @@ class HTTPStorage(BaseStorage):
         os.makedirs(os.path.dirname(path), exist_ok=True)
         sess = requests.session()
         url = self.scheme + "://" + key
-        with sess.get(url, stream=True) as req:
+        with sess.get(url, stream=True, verify=False) as req:
             req.raise_for_status()
-            with open(path, 'wb') as f:
-                shutil.copyfileobj(req.raw, f)
+            with open(path, 'w') as f:
+                shutil.copyfileobj(req.raw, f.buffer)
         return path
 
     def list(self, prefix, recursive=False):

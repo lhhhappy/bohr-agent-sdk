@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 import arxiv
 import json
 from typing import List
+import time
 
 PAPER_DIR = "output/papers"
 
@@ -26,7 +27,7 @@ def search_papers(topic: str, max_results: int = 5) -> List[str]:
     Returns:
         List of paper IDs found in the search
     """
-
+    time.sleep(10)
     # Use arxiv to find the papers
     client = arxiv.Client()
     # Search for the most relevant articles matching the queried topic
@@ -99,6 +100,16 @@ def extract_info(paper_id: str) -> str:
 
     return f"There's no saved information related to paper {paper_id}."
 
+def read_file(file_path: str):
+    """
+    Args:
+        file_path: 文件路径
+    Returns:
+        The content of the file
+    """
+    with open(file_path, "r") as file:
+        return file.read()
+
 def create_agent(ak: str = None, app_key: str = None, project_id: int = None):
     """动态创建 agent - SDK 标准接口
     
@@ -157,5 +168,5 @@ def create_agent(ak: str = None, app_key: str = None, project_id: int = None):
         name="mcp_sse_agent",
         model=LiteLlm(model=model_type),
         instruction="You are an intelligent assistant capable of using external tools.",
-        tools=[show_ak, show_app_key, show_project_id, search_papers, extract_info]
+        tools=[show_ak, show_app_key, show_project_id, search_papers, extract_info, read_file]
     )

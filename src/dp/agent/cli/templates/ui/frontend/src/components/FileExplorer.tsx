@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react'
-import { ChevronRight, File, Folder, FileText, Loader2, X, Copy, Check, Maximize2, Minimize2, Image, Atom, FolderOpen, Globe } from 'lucide-react'
+import { ChevronRight, File, Folder, FileText, Loader2, X, Copy, Check, Maximize2, Minimize2, Image, Atom, FolderOpen, Globe, Download, FolderDown, Trash2 } from 'lucide-react'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import ReactMarkdown from 'react-markdown'
@@ -225,6 +225,67 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
     })
   }, [])
 
+  const handleDeleteFile = useCallback(async (filePath: string, fileName: string) => {
+    const confirmed = window.confirm(`确定要删除 "${fileName}" 吗？`)
+    if (!confirmed) return
+    
+    try {
+      const response = await axios.delete(`${API_BASE_URL}/api/files${filePath}`)
+      if (response.data.success) {
+        // 从文件树中移除已删除的文件
+        const removeFileFromTree = (nodes: FileNode[]): FileNode[] => {
+          return nodes.filter(node => {
+            if (node.path === filePath) {
+              return false // 移除这个节点
+            }
+            if (node.children) {
+              node.children = removeFileFromTree(node.children)
+            }
+            return true
+          })
+        }
+        
+        onFileTreeUpdate(removeFileFromTree(fileTree))
+        
+        // 如果当前选中的文件被删除，清除选择
+        if (selectedFilePath === filePath) {
+          setSelectedFilePath(null)
+          setSelectedFileContent(null)
+        }
+        
+        // 清除缓存
+        fileContentCache.delete(filePath)
+        
+        alert('文件删除成功')
+      }
+    } catch (error) {
+      console.error('删除文件失败:', error)
+      alert('删除文件失败: ' + (error as any).response?.data?.error || '未知错误')
+    }
+  }, [fileTree, onFileTreeUpdate, selectedFilePath, fileContentCache])
+
+  const handleDownloadFile = useCallback((filePath: string) => {
+    // 创建下载链接
+    const downloadUrl = `${API_BASE_URL}/api/download/file/${filePath}`
+    const link = document.createElement('a')
+    link.href = downloadUrl
+    link.download = filePath.split('/').pop() || 'download'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }, [])
+
+  const handleDownloadFolder = useCallback((folderPath: string) => {
+    // 创建文件夹下载链接
+    const downloadUrl = `${API_BASE_URL}/api/download/folder/${folderPath}`
+    const link = document.createElement('a')
+    link.href = downloadUrl
+    link.download = `${folderPath.split('/').pop() || 'folder'}.zip`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }, [])
+
   const renderFileContent = (content: string, filePath: string) => {
     const ext = filePath.split('.').pop()?.toLowerCase()
     
@@ -363,7 +424,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
         transition={{ duration: 0.2, delay: level * 0.02 }}
       >
         <motion.div
-          className={`flex items-center gap-2 px-3 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer rounded-md transition-colors ${
+          className={`group flex items-center gap-2 px-3 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer rounded-md transition-colors ${
             selectedFilePath === node.path ? 'bg-blue-100 dark:bg-blue-900/30 ring-1 ring-blue-500/20' : ''
           }`}
           style={{ paddingLeft: `${level * 1.5 + 0.75}rem` }}
@@ -392,6 +453,43 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
           <span className="text-sm text-gray-700 dark:text-gray-300 truncate flex-1">
             {node.name}
           </span>
+          {/* 文件夹下载按钮 */}
+          {node.type === 'directory' && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                handleDownloadFolder(node.path)
+              }}
+              className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors opacity-0 group-hover:opacity-100"
+              title="下载文件夹"
+            >
+              <FolderDown className="w-3 h-3 text-gray-500" />
+            </button>
+          )}
+          {/* 文件下载按钮 */}
+          {node.type === 'file' && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                handleDownloadFile(node.path)
+              }}
+              className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors opacity-0 group-hover:opacity-100"
+              title="下载文件"
+            >
+              <Download className="w-3 h-3 text-gray-500" />
+            </button>
+          )}
+          {/* 删除按钮 - 文件和文件夹都可以删除 */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              handleDeleteFile(node.path, node.name)
+            }}
+            className="p-1 hover:bg-red-100 dark:hover:bg-red-900/20 rounded transition-colors opacity-0 group-hover:opacity-100"
+            title={`删除${node.type === 'file' ? '文件' : '文件夹'}`}
+          >
+            <Trash2 className="w-3 h-3 text-red-500 hover:text-red-600" />
+          </button>
           {loadingFiles.has(node.path) && (
             <Loader2 className="w-3 h-3 animate-spin text-gray-400" />
           )}
@@ -524,6 +622,13 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
                         {selectedFilePath?.split('/').pop()}
                       </span>
                     </div>
+                    <button
+                      onClick={() => handleDownloadFile(selectedFilePath)}
+                      className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors"
+                      title="下载文件"
+                    >
+                      <Download className="w-4 h-4 text-gray-500" />
+                    </button>
                   </div>
                   <div className="flex-1 overflow-auto bg-white dark:bg-gray-800">
                     {typeof cached === 'object' && cached.type === 'html' && cached.content && (
@@ -559,6 +664,13 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleDownloadFile(selectedFilePath)}
+                        className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors"
+                        title="下载文件"
+                      >
+                        <Download className="w-4 h-4 text-gray-500" />
+                      </button>
                       <button
                         onClick={() => handleCopyCode(selectedFileContent)}
                         className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors"

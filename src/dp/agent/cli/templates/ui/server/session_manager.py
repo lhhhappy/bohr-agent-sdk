@@ -1,466 +1,928 @@
 """
-会话管理核心逻辑
+Session manager - using ADK native DatabaseSessionService implementation
 """
 import os
 import json
 import uuid
 import asyncio
+import traceback
 import logging
-from typing import Dict, List, Optional
-from datetime import datetime
+from typing import Dict, Optional, Any
+from datetime import datetime, timezone
+from pathlib import Path
 from fastapi import WebSocket
 from google.adk import Runner
-from google.adk.sessions import InMemorySessionService
 from google.genai import types
+from google.adk.sessions import DatabaseSessionService, InMemorySessionService, Session
 
-from server.models import Session
 from server.connection import ConnectionContext
-from server.persistence import PersistentSessionManager
 from server.user_files import UserFileManager
 from config.agent_config import agentconfig
 
+# 配置日志输出到文件
+# 使用相对于项目根目录的路径或环境变量配置
+log_file_path = os.environ.get('WEBSOCKET_LOG_PATH', './websocket.log')
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(log_file_path, encoding='utf-8'),
+        logging.StreamHandler()  # 同时输出到控制台
+    ]
+)
 logger = logging.getLogger(__name__)
 
 
 class SessionManager:
-    # 常量定义
-    MAX_WAIT_TIME = 5  # runner初始化最大等待时间（秒）
-    WAIT_INTERVAL = 0.1  # 等待间隔（秒）
-    MAX_HISTORY_MESSAGES = 10  # 历史消息最大数量
-    MAX_CONTEXT_MESSAGES = 8  # 上下文中包含的最大消息数
-    USER_MESSAGE_TRUNCATE = 100  # 用户消息截断长度
-    ASSISTANT_MESSAGE_TRUNCATE = 150  # 助手消息截断长度
-    RESPONSE_PREVIEW_LENGTH = 200  # 响应预览长度
-    AUTO_SAVE_INTERVAL = 30  # 自动保存间隔（秒）
+    """
+    Session manager
+    Based on ADK native DatabaseSessionService, providing session management, persistence, user isolation
+    """
+    
+    # Constants
+    MAX_WAIT_TIME = 5  # Max wait time for runner initialization (seconds)
+    WAIT_INTERVAL = 0.1  # Wait interval (seconds)
+    MAX_CONTEXT_MESSAGES = 8  # Max messages in context
     
     def __init__(self):
+        """Initialize session manager"""
+        # Active connection management
         self.active_connections: Dict[WebSocket, ConnectionContext] = {}
-        # Use configuration values
+        
+        # Application config
         self.app_name = agentconfig.config.get("agent", {}).get("name", "Agent")
         
-        # 初始化持久化管理器
+        # Initialize paths
         user_working_dir = os.environ.get('USER_WORKING_DIR', os.getcwd())
-        # 从配置中获取 sessions 目录路径
         files_config = agentconfig.get_files_config()
         sessions_dir = files_config.get('sessionsDir', '.agent_sessions')
-        self.persistent_manager = PersistentSessionManager(user_working_dir, sessions_dir)
-        # 初始化用户文件管理器
-        self.user_file_manager = UserFileManager(user_working_dir, sessions_dir)
-        # 自动保存任务字典 {websocket: task}
-        self.auto_save_tasks: Dict[WebSocket, asyncio.Task] = {}
+        
+        # Session storage directory
+        sessions_path = Path(sessions_dir)
+        if sessions_path.is_absolute():
+            self.sessions_dir = sessions_path
+        else:
+            self.sessions_dir = Path(user_working_dir) / sessions_dir
+            
+        # Ensure directory exists
+        self.sessions_dir.mkdir(parents=True, exist_ok=True)
+        
+        # SessionService cache (independent instance for each user)
+        self.session_services: Dict[str, Any] = {}
+        
+        # Initialize user file manager
+        self.user_file_manager = UserFileManager(user_working_dir, str(self.sessions_dir))
+        
+        # Runner cache
+        self.runners: Dict[str, Runner] = {}
+        
+        # Runner错误缓存
+        self._runner_errors: Dict[str, str] = {}
+        
+    def _create_session_service(self, user_identifier: str, is_registered: bool):
+        """
+        Create SessionService for user
+        
+        Args:
+            user_identifier: User identifier
+            is_registered: Whether user is registered
+            
+        Returns:
+            SessionService instance
+        """
+        if is_registered:
+            # Registered users use DatabaseSessionService for persistence
+            user_db_dir = self.sessions_dir / "users" / user_identifier
+            user_db_dir.mkdir(parents=True, exist_ok=True)
+            
+            db_file = user_db_dir / "sessions.db"
+            db_url = f"sqlite:///{db_file}"
+            
+            return DatabaseSessionService(db_url=db_url)
+        else:
+            # Temporary users use in-memory storage
+            return InMemorySessionService()
+            
+    async def connect_client(self, websocket: WebSocket, access_key: str = "", app_key: str = ""):
+        """
+        Connect new client
+        
+        Args:
+            websocket: WebSocket connection
+            access_key: Bohrium access key
+            app_key: Bohrium app key
+        """
+        await websocket.accept()
+        
+        # Create connection context
+        context = ConnectionContext(websocket, access_key, app_key)
+        self.active_connections[websocket] = context
+        
+        # Asynchronously initialize user info
+        await context.init_bohrium_user_id()
+        user_identifier = context.get_user_identifier()
+        is_registered = context.is_registered_user()
+        
+        # Create independent SessionService for this user
+        session_service = self._create_session_service(user_identifier, is_registered)
+        self.session_services[user_identifier] = session_service
+        
+        # Load or create sessions
+        await self._load_or_create_sessions(context, session_service)
+        
+        # Send initial data
+        await self._send_initial_data(context, session_service)
+        
+    async def disconnect_client(self, websocket: WebSocket):
+        """
+        Disconnect client
+        
+        Args:
+            websocket: WebSocket connection
+        """
+        if websocket not in self.active_connections:
+            return
+            
+        context = self.active_connections[websocket]
+        user_identifier = context.get_user_identifier()
+        
+        # 标记连接为已断开，防止后续操作
+        context.is_connected = False
+        
+        # Clean up SessionService
+        if user_identifier in self.session_services:
+            del self.session_services[user_identifier]
+            
+        # Clean up Runner
+        for key in list(self.runners.keys()):
+            if key.startswith(f"{user_identifier}_"):
+                del self.runners[key]
+        
+        # 清理相关的错误缓存
+        for key in list(self._runner_errors.keys()):
+            if key.startswith(f"{user_identifier}_"):
+                del self._runner_errors[key]
+                
+        # Clean up connection context
+        context.cleanup()
+        del self.active_connections[websocket]
         
     async def create_session(self, context: ConnectionContext) -> Session:
-        """创建新会话"""
+        """
+        Create new session
+        
+        Args:
+            context: Connection context
+            
+        Returns:
+            Session ID
+        """
+        user_identifier = context.get_user_identifier()
+        session_service = self.session_services.get(user_identifier)
+        
+        if not session_service:
+            return None
+            
+        # Generate session ID
         session_id = str(uuid.uuid4())
-        session = Session(id=session_id)
         
-        # 先将会话添加到连接的会话列表
-        context.sessions[session_id] = session
+        # Create session metadata
+        metadata = {
+            "created_at": datetime.now().isoformat(),
+            "last_message_at": datetime.now().isoformat(),
+            "message_count": 0,
+            "title": "未命名",
+            "project_id": context.project_id
+        }
         
-        # 异步初始化runner，不阻塞返回
-        asyncio.create_task(self._init_session_runner(context, session_id))
+        session = await session_service.create_session(
+            app_name=self.app_name,
+            user_id=user_identifier,
+            session_id=session_id,
+            state={"metadata": metadata}
+        )
         
-        # 如果是注册用户，立即保存新会话
-        if context.bohrium_user_id:
-            try:
-                user_identifier = context.get_user_identifier()
-                await self.persistent_manager.save_session(user_identifier, session)
-                session.mark_saved()  # 标记为已保存
-                logger.debug(f"新会话已保存: {session_id}")
-            except Exception as e:
-                logger.error(f"保存新会话失败: {e}")
+        # Asynchronously initialize Runner
+        asyncio.create_task(self._init_runner(context, session.id))
+        
+        # Update current session
+        context.current_session_id = session.id
         
         return session
-    
-    def _cleanup_session(self, context: ConnectionContext, session_id: str):
-        """统一的会话清理方法"""
-        if session_id in context.sessions:
-            del context.sessions[session_id]
-        if session_id in context.runners:
-            del context.runners[session_id]
-        if session_id in context.session_services:
-            del context.session_services[session_id]
-    
-    async def _init_session_runner(self, context: ConnectionContext, session_id: str):
-        """异步初始化会话的runner"""
+        
+    async def delete_session(self, context: ConnectionContext, session_id: str) -> bool:
+        """
+        Delete session
+        
+        Args:
+            context: Connection context
+            session_id: Session ID
+            
+        Returns:
+            Whether deletion succeeded
+        """
+        user_identifier = context.get_user_identifier()
+        session_service = self.session_services.get(user_identifier)
+        
+        if not session_service:
+            return False
+            
         try:
-            # 检查是否有 project_id（可以从环境变量获取用于开发）
-            project_id = context.project_id
-            if not project_id:
-                # 尝试从环境变量获取（仅用于开发调试）
-                env_project_id = os.environ.get('BOHR_PROJECT_ID')
-                if env_project_id:
-                    try:
-                        project_id = int(env_project_id)
-                        context.project_id = project_id
-                        logger.info(f"从环境变量获取 project_id: {project_id}")
-                    except ValueError:
-                        logger.error(f"环境变量 BOHR_PROJECT_ID 值无效: {env_project_id}")
-            
-            # 如果仍然没有 project_id，记录警告但继续（让前端处理）
-            if not project_id:
-                logger.warning(f"会话 {session_id} 初始化时没有 project_id")
-            
-            
-            # 在异步任务中创建agent，避免阻塞主线程
-            # 确保传入正确的AK（如果是空字符串或None，agent应该知道这是临时用户）
-            loop = asyncio.get_event_loop()
-            user_agent = await loop.run_in_executor(
-                None, 
-                agentconfig.get_agent, 
-                context.access_key if context.access_key else "",
-                context.app_key if context.app_key else "",
-                project_id
-            )
-            
-            session_service = InMemorySessionService()
-            await session_service.create_session(
+            # delete_session method returns None, not boolean
+            await session_service.delete_session(
                 app_name=self.app_name,
-                user_id=context.user_id,
+                user_id=user_identifier,
                 session_id=session_id
             )
             
+            # No exception means success
+            
+            # Clean up Runner
+            runner_key = f"{user_identifier}_{session_id}"
+            if runner_key in self.runners:
+                del self.runners[runner_key]
+                
+            return True  # Return success if no exception
+        except Exception as e:
+            return False
+        
+    async def switch_session(self, context: ConnectionContext, session_id: str) -> bool:
+        """
+        Switch current session
+        
+        Args:
+            context: Connection context
+            session_id: Session ID
+            
+        Returns:
+            Whether switch succeeded
+        """
+        user_identifier = context.get_user_identifier()
+        session_service = self.session_services.get(user_identifier)
+        
+        if not session_service:
+            return False
+            
+        # Check if session exists
+        session = await session_service.get_session(
+            app_name=self.app_name,
+            user_id=user_identifier,
+            session_id=session_id
+        )
+        
+        if not session:
+            return False
+            
+        # Switch session
+        context.current_session_id = session_id
+        
+        # Ensure Runner is initialized
+        runner_key = f"{user_identifier}_{session_id}"
+        if runner_key not in self.runners:
+            asyncio.create_task(self._init_runner(context, session_id))
+            
+        return True
+        
+    async def process_message(self, context: ConnectionContext, message: str, attachments: list = None):
+        # 保存context引用以供URL生成使用
+        self.current_context = context
+        """
+        Process user message
+        
+        Args:
+            context: Connection context
+            message: User message
+        """
+        # Check project_id
+        if not context.project_id and not os.environ.get('BOHR_PROJECT_ID'):
+            await self._send_error(context, "🔒 请先设置项目 ID")
+            return
+            
+        if not context.current_session_id:
+            await self._send_error(context, "没有活动的会话")
+            return
+            
+        user_identifier = context.get_user_identifier()
+        session_service = self.session_services.get(user_identifier)
+        
+        if not session_service:
+            await self._send_error(context, "会话服务未初始化")
+            return
+            
+        # 获取会话
+        session = await session_service.get_session(
+            app_name=self.app_name,
+            user_id=user_identifier,
+            session_id=context.current_session_id
+        )
+        
+        if not session:
+            await self._send_error(context, "会话不存在")
+            return
+            
+        # 等待 Runner 初始化
+        runner = await self._get_or_wait_runner(context, context.current_session_id)
+        if not runner:
+            error_details = self._runner_errors.get(f"{user_identifier}_{context.current_session_id}", "未知错误")
+            await self._send_error(
+                context, 
+                f"会话初始化失败\n\n可能的原因：\n"
+                f"1. Agent 配置文件路径错误\n"
+                f"2. Agent 模块导入失败\n"
+                f"3. Project ID 无效\n\n"
+                f"错误详情：{error_details}\n\n"
+                f"请检查 config/agent-config.json 中的配置"
+            )
+            return
+            
+        # 更新会话元数据（在处理消息之前）
+        await self._update_session_metadata(context, session, message)
+        
+        # Get user file directory
+        user_files_dir = self.user_file_manager.get_user_files_dir(user_id=user_identifier)
+        original_cwd = os.getcwd()
+        
+        try:
+            # Switch to user file directory
+            os.chdir(user_files_dir)
+            
+            # Build message content
+            content = self._build_message_content(session, message, attachments)
+            
+            # Process message stream
+            await self._process_message_stream(
+                context,
+                runner,
+                content,
+                user_identifier,
+                context.current_session_id
+            )
+            
+        except Exception as e:
+            await self._send_error(context, f"处理消息失败: {str(e)}")
+            
+        finally:
+            # Restore working directory
+            try:
+                os.chdir(original_cwd)
+            except Exception as e:
+                pass
+                
+    async def _load_or_create_sessions(self, context: ConnectionContext, session_service):
+        """Load or create sessions"""
+        user_identifier = context.get_user_identifier()
+        
+        try:
+            response = await session_service.list_sessions(
+                app_name=self.app_name,
+                user_id=user_identifier
+            )
+            
+            # Get session list from ListSessionsResponse object
+            sessions = response.sessions if hasattr(response, 'sessions') else []
+            
+            if sessions:
+                # Sort by last message time
+                sessions.sort(
+                    key=lambda s: self._get_session_last_update_time(s),
+                    reverse=True
+                )
+                
+                # Select most recent session as current
+                context.current_session_id = sessions[0].id
+                
+                # Initialize Runner for each session
+                for session in sessions:
+                    asyncio.create_task(self._init_runner(context, session.id))
+                    
+            else:
+                # Create new session
+                await self._create_default_session(context, session_service)
+                
+        except Exception as e:
+            await self._create_default_session(context, session_service)
+            
+    async def _create_default_session(self, context: ConnectionContext, session_service):
+        """Create default session"""
+        user_identifier = context.get_user_identifier()
+        session_id = str(uuid.uuid4())
+        
+        # Create session metadata
+        metadata = {
+            "created_at": datetime.now().isoformat(),
+            "last_message_at": datetime.now().isoformat(),
+            "message_count": 0,
+            "title": "未命名",
+            "project_id": context.project_id
+        }
+        
+        session = await session_service.create_session(
+            app_name=self.app_name,
+            user_id=user_identifier,
+            session_id=session_id,
+            state={"metadata": metadata}
+        )
+        
+        context.current_session_id = session.id
+        
+        # Initialize Runner
+        asyncio.create_task(self._init_runner(context, session.id))
+        
+    async def _init_runner(self, context: ConnectionContext, session_id: str):
+        """Asynchronously initialize Runner"""
+        user_identifier = context.get_user_identifier()
+        runner_key = f"{user_identifier}_{session_id}"
+        
+        logger.info(f"🚀 开始初始化 Runner: {runner_key}")
+        logger.debug(f"  用户标识: {user_identifier}")
+        logger.debug(f"  会话ID: {session_id}")
+        logger.debug(f"  Access Key: {'有' if context.access_key else '无'}")
+        logger.debug(f"  App Key: {'有' if context.app_key else '无'}")
+        
+        try:
+            # Get project_id
+            project_id = context.project_id or os.environ.get('BOHR_PROJECT_ID')
+            if project_id:
+                project_id = int(project_id) if isinstance(project_id, str) else project_id
+            logger.debug(f"  Project ID: {project_id}")
+                
+            # Create agent
+            logger.info(f"📦 创建 Agent...")
+            logger.debug(f"  配置模块: {agentconfig.config.get('agent', {}).get('module')}")
+            logger.debug(f"  Agent名称: {agentconfig.config.get('agent', {}).get('name')}")
+            
+            loop = asyncio.get_event_loop()
+            user_agent = await loop.run_in_executor(
+                None,
+                agentconfig.get_agent,
+                context.access_key or "",
+                context.app_key or "",
+                project_id
+            )
+            
+            if not user_agent:
+                raise ValueError("Agent 创建失败: 返回 None")
+            
+            logger.info(f"✅ Agent 创建成功: {type(user_agent).__name__}")
+            
+            # Create Runner
+            logger.info(f"🏃 创建 Runner...")
+            
+            # 检查连接是否仍然有效
+            if not context.is_connected:
+                logger.warning(f"⚠️ 连接已断开，跳过 Runner 初始化: {runner_key}")
+                return
+                
+            session_service = self.session_services.get(user_identifier)
+            if not session_service:
+                logger.warning(f"⚠️ SessionService 已被清理，跳过 Runner 初始化: {runner_key}")
+                return
+                
             runner = Runner(
                 agent=user_agent,
                 session_service=session_service,
                 app_name=self.app_name
             )
             
-            context.session_services[session_id] = session_service
-            context.runners[session_id] = runner
+            self.runners[runner_key] = runner
+            logger.info(f"✅ Runner 初始化成功: {runner_key}")
+            logger.debug(f"  当前 Runner 数量: {len(self.runners)}")
             
+        except ImportError as e:
+            error_msg = f"❌ 导入错误: {str(e)}\n{traceback.format_exc()}"
+            logger.error(error_msg)
+            # 存储错误信息
+            self._runner_errors[runner_key] = error_msg
         except Exception as e:
-            logger.error(f"初始化Runner失败 (session_id: {session_id}): {e}", exc_info=True)
-            # 清理失败的会话
-            self._cleanup_session(context, session_id)
-    
-    def get_session(self, context: ConnectionContext, session_id: str) -> Optional[Session]:
-        """获取会话"""
-        return context.sessions.get(session_id)
-    
-    def get_all_sessions(self, context: ConnectionContext) -> List[Session]:
-        """获取连接的所有会话列表"""
-        return list(context.sessions.values())
-    
-    def get_context_by_user_id(self, user_id: str) -> Optional[ConnectionContext]:
-        """通过用户ID获取连接上下文"""
-        for context in self.active_connections.values():
-            if context.get_user_identifier() == user_id:
-                return context
-        return None
-    
-    def get_user_identifier_from_request(self, access_key: str = None, app_key: str = None) -> Optional[str]:
-        """从请求信息获取用户标识符（优先从已连接的上下文获取）"""
-        if access_key:
-            # 先查找是否有已连接的用户
-            for context in self.active_connections.values():
-                if context.access_key == access_key:
-                    return context.get_user_identifier()
-        return None
-    
-    async def delete_session(self, context: ConnectionContext, session_id: str) -> bool:
-        """删除会话"""
-        if session_id not in context.sessions:
-            return False
-        
-        # 清理会话
-        self._cleanup_session(context, session_id)
-        
-        # 如果有用户ID，同时删除持久化文件
-        user_identifier = context.get_user_identifier()
-        if context.bohrium_user_id:  # 只为注册用户保存
-            await self.persistent_manager.delete_session(user_identifier, session_id)
-        
-        return True
-    
-    async def switch_session(self, context: ConnectionContext, session_id: str) -> bool:
-        """切换当前会话"""
-        if session_id in context.sessions:
-            # 保存当前会话（如果有）
-            if context.bohrium_user_id and context.current_session_id:
-                old_session = context.sessions.get(context.current_session_id)
-                if old_session:
-                    try:
-                        user_identifier = context.get_user_identifier()
-                        await self.persistent_manager.save_session(user_identifier, old_session)
-                        old_session.mark_saved()  # 标记为已保存
-                        logger.debug(f"切换前保存会话: {context.current_session_id}")
-                    except Exception as e:
-                        logger.error(f"保存会话失败: {e}")
+            error_msg = f"❌ Runner 初始化失败: {str(e)}\n类型: {type(e).__name__}\n{traceback.format_exc()}"
+            logger.error(error_msg)
+            # 存储错误信息
+            self._runner_errors[runner_key] = error_msg
             
-            # 切换到新会话
-            context.current_session_id = session_id
-            return True
-        return False
-    
-    async def connect_client(self, websocket: WebSocket, access_key: str = "", app_key: str = ""):
-        """连接新客户端"""
-        await websocket.accept()
-        
-        # 为新连接创建独立的上下文，包含AK和app_key
-        context = ConnectionContext(websocket, access_key, app_key)
-        self.active_connections[websocket] = context
-        
-        # 异步初始化用户信息
-        await context.init_bohrium_user_id()
-        
-        # 启动自动保存任务（只为注册用户）
-        if context.bohrium_user_id:
-            self.auto_save_tasks[websocket] = asyncio.create_task(
-                self._auto_save_sessions(context)
-            )
-            logger.info(f"启动自动保存任务，间隔 {self.AUTO_SAVE_INTERVAL} 秒")
-        
-        # 加载历史会话（如果有用户ID）
+    async def _get_or_wait_runner(self, context: ConnectionContext, session_id: str) -> Optional[Runner]:
+        """Get or wait for Runner initialization"""
         user_identifier = context.get_user_identifier()
-        if context.bohrium_user_id:  # 只为注册用户加载历史
-            logger.info(f"注册用户连接: {context.bohrium_user_id}, AK: {access_key[:8] if access_key else 'N/A'}...")
-            logger.info("正在加载历史会话...")
-            
-            try:
-                historical_sessions = await self.persistent_manager.load_user_sessions(user_identifier)
+        runner_key = f"{user_identifier}_{session_id}"
+        
+        logger.debug(f"⏳ 等待 Runner 初始化: {runner_key}")
+        
+        # Wait for Runner initialization
+        retry_count = 0
+        max_retries = int(self.MAX_WAIT_TIME / self.WAIT_INTERVAL)
+        
+        while runner_key not in self.runners and retry_count < max_retries:
+            # 检查是否有错误
+            if runner_key in self._runner_errors:
+                logger.error(f"Runner 初始化已失败: {self._runner_errors[runner_key]}")
+                # 发送详细的错误信息到前端
+                await self._send_error(
+                    context, 
+                    f"会话初始化失败\n\n错误详情：\n{self._runner_errors[runner_key]}"
+                )
+                # 清除错误缓存
+                del self._runner_errors[runner_key]
+                return None
                 
-                if historical_sessions:
-                    # 恢复历史会话
-                    context.sessions = historical_sessions
-                    
-                    # 选择最近的会话作为当前会话
-                    sorted_sessions = sorted(
-                        historical_sessions.values(), 
-                        key=lambda s: s.last_message_at, 
-                        reverse=True
-                    )
-                    context.current_session_id = sorted_sessions[0].id if sorted_sessions else None
-                    
-                    # 为每个会话异步初始化runner
-                    for session_id in historical_sessions:
-                        asyncio.create_task(self._init_session_runner(context, session_id))
-                    
-                    logger.info(f"已恢复 {len(historical_sessions)} 个历史会话，正在后台初始化Runner...")
-                else:
-                    # 新的AK用户，创建首个会话
-                    logger.info("没有找到历史会话，创建新会话")
-                    session = await self.create_session(context)
-                    context.current_session_id = session.id
-            except Exception as e:
-                logger.error(f"加载历史会话失败: {e}")
-                # 加载失败时创建新会话
-                session = await self.create_session(context)
-                context.current_session_id = session.id
+            await asyncio.sleep(self.WAIT_INTERVAL)
+            retry_count += 1
+            
+            if retry_count % 10 == 0:  # 每秒记录一次
+                logger.debug(f"  仍在等待... ({retry_count * self.WAIT_INTERVAL:.1f}秒)")
+        
+        runner = self.runners.get(runner_key)
+        if runner:
+            logger.info(f"✅ 获取 Runner 成功: {runner_key}")
         else:
-            # 临时用户，创建默认会话
-            logger.info(f"临时用户连接: {user_identifier}")
-            session = await self.create_session(context)
-            context.current_session_id = session.id
-        
-        # 发送初始会话信息
-        await self.send_sessions_list(context)
-        
-        # 如果有当前会话，发送其消息历史
-        if context.current_session_id:
-            await self.send_session_messages(context, context.current_session_id)
-        
-        # 注释掉 project_id 状态检查，允许用户自定义填写
-        # if not context.project_id and not os.environ.get('BOHR_PROJECT_ID'):
-        #     await context.websocket.send_json({
-        #         "type": "require_project_id",
-        #         "content": "需要设置 Project ID 才能使用 Agent"
-        #     })
-        
-    async def disconnect_client(self, websocket: WebSocket):
-        """断开客户端连接"""
-        if websocket in self.active_connections:
-            context = self.active_connections[websocket]
+            logger.error(f"❌ 超时等待 Runner: {runner_key} (等待了 {self.MAX_WAIT_TIME} 秒)")
             
-            # 如果有Bohrium用户ID，保存所有会话
-            user_identifier = context.get_user_identifier()
-            if context.bohrium_user_id:  # 只为注册用户保存
-                for session in context.sessions.values():
-                    try:
-                        await self.persistent_manager.save_session(
-                            user_identifier,
-                            session
-                        )
-                    except Exception as e:
-                        logger.error(f"保存会话失败: {e}")
-            
-            # 取消自动保存任务
-            if websocket in self.auto_save_tasks:
-                self.auto_save_tasks[websocket].cancel()
-                del self.auto_save_tasks[websocket]
-                logger.debug("已取消自动保存任务")
-            
-            # 清理文件监视器
-            context.cleanup()
-            # 清理该连接的所有资源
-            del self.active_connections[websocket]
-    
-    async def send_sessions_list(self, context: ConnectionContext):
-        """发送会话列表到客户端"""
-        try:
-            sessions_data = []
-            for session in context.sessions.values():
-                sessions_data.append({
-                    "id": session.id,
-                    "title": session.title,
-                    "created_at": session.created_at.isoformat(),
-                    "last_message_at": session.last_message_at.isoformat(),
-                    "message_count": len(session.messages)
-                })
-            
-            message = {
-                "type": "sessions_list",
-                "sessions": sessions_data,
-                "current_session_id": context.current_session_id
-            }
-            
-            await context.websocket.send_json(message)
-        except Exception as e:
-            logger.debug(f"发送会话列表失败（可能是连接已断开）: {e}")
-    
-    async def send_session_messages(self, context: ConnectionContext, session_id: str):
-        """发送会话的历史消息"""
-        try:
-            session = self.get_session(context, session_id)
-            if not session:
-                return
-                
-            messages_data = []
-            for msg in session.messages:
-                messages_data.append({
-                    "id": msg.id,
-                    "role": msg.role,
-                    "content": msg.content,
-                    "timestamp": msg.timestamp.isoformat(),
-                    "tool_name": msg.tool_name,
-                    "tool_status": msg.tool_status
-                })
-            
-            message = {
-                "type": "session_messages",
-                "session_id": session_id,
-                "messages": messages_data
-            }
-            
-            await context.websocket.send_json(message)
-        except Exception as e:
-            logger.debug(f"发送会话消息失败（可能是连接已断开）: {e}")
-    
-    async def send_to_connection(self, context: ConnectionContext, message: dict):
-        """发送消息到特定连接"""
-        # 为消息添加唯一标识符
-        if 'id' not in message:
-            message['id'] = f"{message.get('type', 'unknown')}_{datetime.now().timestamp()}"
+        return runner
         
-        try:
-            await context.websocket.send_json(message)
-        except Exception as e:
-            logger.error(f"发送消息失败: {e}")
-            # 注意：这里不能使用 await，因为在同步上下文中
-            # 创建一个新的任务来处理断开连接
-            asyncio.create_task(self.disconnect_client(context.websocket))
-    
-    def _build_history_context(self, session: Session, current_message: str) -> types.Content:
-        """构建包含历史上下文的消息"""
-        if len(session.messages) <= 1:
-            # 没有历史，直接使用原始消息
-            return types.Content(
-                role='user',
-                parts=[types.Part(text=current_message)]
-            )
+    async def _update_session_metadata(self, context: ConnectionContext, session: Session, message: str):
+        """Correctly update metadata in session.state through append_event"""
+        # Get existing metadata
+        metadata = session.state.get('metadata', {}) if session.state else {}
         
-        # 构建历史上下文
-        history_parts = []
-        recent_messages = session.messages[-(self.MAX_HISTORY_MESSAGES + 1):-1]
+        # Prepare new metadata
+        new_metadata = dict(metadata)  # Create copy
+        new_metadata['last_message_at'] = datetime.now().isoformat()
+        new_metadata['message_count'] = new_metadata.get('message_count', 0) + 1
         
-        for msg in recent_messages:
-            if msg.role == 'user':
-                truncated = msg.content[:self.USER_MESSAGE_TRUNCATE]
-                suffix = '...' if len(msg.content) > self.USER_MESSAGE_TRUNCATE else ''
-                history_parts.append(f"用户: {truncated}{suffix}")
-            elif msg.role == 'assistant':
-                truncated = msg.content[:self.ASSISTANT_MESSAGE_TRUNCATE]
-                suffix = '...' if len(msg.content) > self.ASSISTANT_MESSAGE_TRUNCATE else ''
-                history_parts.append(f"助手: {truncated}{suffix}")
-            elif msg.role == 'tool' and msg.tool_status == 'completed':
-                history_parts.append(f"[使用工具 {msg.tool_name}]")
+        # Use message content as title for first message
+        if new_metadata['message_count'] == 1:
+            new_metadata['title'] = message[:50] if len(message) > 50 else message
+            
+        # Create state_delta through EventActions
+        from google.adk.events import Event, EventActions
         
-        if history_parts:
-            enhanced_message = f"[对话历史]\n{chr(10).join(history_parts[-self.MAX_CONTEXT_MESSAGES:])}\n\n[当前问题]\n{current_message}"
-            return types.Content(
-                role='user',
-                parts=[types.Part(text=enhanced_message)]
-            )
+        state_delta = {
+            'metadata': new_metadata
+        }
         
-        return types.Content(
-            role='user',
-            parts=[types.Part(text=current_message)]
+        # Create event containing state_delta
+        update_event = Event(
+            invocation_id=f"metadata_update_{datetime.now().timestamp()}",
+            author="system",
+            actions=EventActions(state_delta=state_delta),
+            timestamp=datetime.now().timestamp()
         )
-    
-    async def _handle_tool_events(self, event, context: ConnectionContext, session: Session, 
-                                  seen_tool_calls: set, seen_tool_responses: set):
-        """处理工具相关事件"""
-        if not hasattr(event, 'content') or not event.content or not hasattr(event.content, 'parts'):
-            return
         
-        for part in event.content.parts:
-            # 处理函数调用
-            if hasattr(part, 'function_call') and part.function_call:
-                function_call = part.function_call
-                tool_name = getattr(function_call, 'name', 'unknown')
-                tool_id = getattr(function_call, 'id', tool_name)
-                
-                if tool_id not in seen_tool_calls:
-                    seen_tool_calls.add(tool_id)
-                    await self.send_to_connection(context, {
+        # Update state correctly through append_event
+        user_identifier = context.get_user_identifier()
+        session_service = self.session_services.get(user_identifier)
+        if session_service:
+            await session_service.append_event(session, update_event)
+        
+    async def _process_message_stream(
+        self,
+        context: ConnectionContext,
+        runner: Runner,
+        content: types.Content,
+        user_identifier: str,
+        session_id: str
+    ):
+        """Process message stream - using ADK native event handling"""
+        streaming_text = ""  # Accumulate streaming text
+        
+        # Run Runner
+        async for event in runner.run_async(
+            new_message=content,
+            user_id=user_identifier,
+            session_id=session_id
+        ):
+            # 1. Check event author
+            author = getattr(event, 'author', None)
+            
+            # 2. Check if it's streaming output
+            is_partial = getattr(event, 'partial', False)
+            
+            # 3. Handle function calls (tool call requests)
+            function_calls = event.get_function_calls() if hasattr(event, 'get_function_calls') else []
+            if function_calls:
+                for call in function_calls:
+                    await self._send_message(context, {
                         "type": "tool",
-                        "tool_name": tool_name,
+                        "tool_name": call.name,
+                        "args": call.args,  # Add tool call parameters
                         "status": "executing",
                         "timestamp": datetime.now().isoformat()
                     })
-                    await asyncio.sleep(0.1)  # 给前端时间处理
+                    await asyncio.sleep(0.2)
+            # 4. Handle function responses (tool execution results)
+            function_responses = event.get_function_responses() if hasattr(event, 'get_function_responses') else []
+            if function_responses:
+                for response in function_responses:
+                    # Format response result
+                    result_str = self._format_response_data(response.response)
+                    await self._send_message(context, {
+                        "type": "tool",
+                        "tool_name": response.name,
+                        "result": result_str,
+                        "status": "completed",
+                        "timestamp": datetime.now().isoformat()
+                    })
             
-            # 处理函数响应
-            elif hasattr(part, 'function_response') and part.function_response:
-                function_response = part.function_response
-                tool_name = getattr(function_response, 'name', 'unknown')
-                response_id = getattr(function_response, 'id', f"{tool_name}_response")
+            # 5. Handle text content
+            if hasattr(event, 'content') and event.content:
+                if hasattr(event.content, 'parts') and event.content.parts:
+                    for part in event.content.parts:
+                        if hasattr(part, 'text') and part.text:
+                            if is_partial:
+                                # Streaming text, accumulate
+                                streaming_text += part.text
+                            else:
+                                # Complete text
+                                text_to_send = streaming_text + part.text if streaming_text else part.text
+                                streaming_text = ""  # Reset accumulator
+                                
+                                # Send message based on role
+                                role = getattr(event.content, 'role', 'model')
+                                if role == 'model':
+                                    await self._send_message(context, {
+                                        "type": "assistant",
+                                        "content": text_to_send,
+                                        "session_id": session_id
+                                    })
+            
+            # 6. Check if it's final response
+            if hasattr(event, 'is_final_response') and event.is_final_response():
+                # If there's accumulated streaming text, send it now
+                if streaming_text:
+                    await self._send_message(context, {
+                        "type": "assistant",
+                        "content": streaming_text,
+                        "session_id": session_id
+                    })
+                    streaming_text = ""
+            
+            # 7. Handle Actions (state changes and control flow)
+            if hasattr(event, 'actions') and event.actions:
+                # State changes
+                if hasattr(event.actions, 'state_delta') and event.actions.state_delta:
+                    pass
                 
-                if response_id not in seen_tool_responses:
-                    seen_tool_responses.add(response_id)
+                # Skip summarization flag
+                if hasattr(event.actions, 'skip_summarization') and event.actions.skip_summarization:
+                    pass
+                
+                # Agent transfer
+                if hasattr(event.actions, 'transfer_to_agent') and event.actions.transfer_to_agent:
+                    pass
+        
+        # Send completion marker
+        await self._send_message(context, {
+            "type": "complete",
+            "content": ""
+        })
+        
+        # Send updated session list
+        await self.send_sessions_list(context)
+        
+    # _handle_tool_events method removed, functionality integrated into _process_message_stream
                     
-                    if hasattr(function_response, 'response'):
-                        response_data = function_response.response
-                        result_str = self._format_response_data(response_data)
-                        
-                        await self.send_to_connection(context, {
-                            "type": "tool",
-                            "tool_name": tool_name,
-                            "status": "completed",
-                            "result": result_str,
-                            "timestamp": datetime.now().isoformat()
-                        })
-                        session.add_message("tool", result_str, tool_name=tool_name, tool_status="completed")
-                    else:
-                        await self.send_to_connection(context, {
-                            "type": "tool",
-                            "tool_name": tool_name,
-                            "status": "completed",
-                            "timestamp": datetime.now().isoformat()
-                        })
-                        session.add_message("tool", f"工具 {tool_name} 执行完成", tool_name=tool_name, tool_status="completed")
+    async def _get_session_metadata(self, session_service, user_identifier: str, session_id: str) -> dict:
+        """Get latest session metadata"""
+        try:
+            fresh_session = await session_service.get_session(
+                app_name=self.app_name,
+                user_id=user_identifier,
+                session_id=session_id
+            )
+            if fresh_session and hasattr(fresh_session, 'state') and isinstance(fresh_session.state, dict):
+                return fresh_session.state.get('metadata', {})
+        except Exception as e:
+            pass
+        return {}
     
+    async def _send_initial_data(self, context: ConnectionContext, session_service):
+        """Send initial data to client"""
+        user_identifier = context.get_user_identifier()
+        
+        # Send session list
+        response = await session_service.list_sessions(
+            app_name=self.app_name,
+            user_id=user_identifier
+        )
+        
+        # Get session list from ListSessionsResponse object
+        sessions = response.sessions if hasattr(response, 'sessions') else []
+        
+        sessions_data = []
+        for session in sessions:
+            # Get latest metadata
+            metadata = await self._get_session_metadata(session_service, user_identifier, session.id)
+            if not metadata:  # If fetch fails, use original data as fallback
+                metadata = session.state.get('metadata', {}) if session.state else {}
+                
+            sessions_data.append({
+                "id": session.id,
+                "title": metadata.get("title", "未命名"),
+                "created_at": metadata.get("created_at", datetime.now().isoformat()),
+                "last_message_at": metadata.get("last_message_at", datetime.now().isoformat()),
+                "message_count": metadata.get("message_count", 0)
+            })
+            
+        await self._send_message(context, {
+            "type": "sessions_list",
+            "sessions": sessions_data,
+            "current_session_id": context.current_session_id
+        })
+        
+        # Send current session message history
+        if context.current_session_id:
+            await self._send_session_messages(context, session_service, context.current_session_id)
+            
+    async def _send_session_messages(self, context: ConnectionContext, session_service, session_id: str):
+        """Send session message history"""
+        user_identifier = context.get_user_identifier()
+        
+        session = await session_service.get_session(
+            app_name=self.app_name,
+            user_id=user_identifier,
+            session_id=session_id
+        )
+        
+        if not session or not hasattr(session, 'events'):
+            return
+            
+        messages_data = []
+        
+        for event in session.events:
+            # Parse events, convert to frontend-understandable format
+            if not hasattr(event, 'content'):
+                continue
+                
+            content = event.content
+            role = getattr(content, 'role', None)
+            timestamp = self._format_timestamp(getattr(event, "timestamp", None))
+            
+            # Handle message content
+            if hasattr(content, 'parts'):
+                for part in content.parts:
+                    # Handle text messages
+                    if hasattr(part, 'text') and part.text:
+                        if role == 'user':
+                            messages_data.append({
+                                "id": str(uuid.uuid4()),
+                                "role": "user",
+                                "type": "user",
+                                "content": part.text,
+                                "timestamp": timestamp
+                            })
+                        elif role == 'model':
+                            messages_data.append({
+                                "id": str(uuid.uuid4()),
+                                "role": "assistant",
+                                "type": "assistant",
+                                "content": part.text,
+                                "timestamp": timestamp
+                            })
+                    
+                    # Handle tool calls - don't show executing state in history
+                    elif hasattr(part, 'function_call') and part.function_call:
+                        # Skip function_call in history, only show final results
+                        pass
+                    
+                    # Handle tool responses - only show completed tool calls
+                    elif hasattr(part, 'function_response') and part.function_response:
+                        func_resp = part.function_response
+                        tool_name = getattr(func_resp, 'name', 'unknown')
+                        result_str = self._format_response_data(getattr(func_resp, 'response', {}))
+                        # Use simple UUID for history messages
+                        messages_data.append({
+                            "id": str(uuid.uuid4()),
+                            "role": "tool",
+                            "type": "tool",
+                            "tool_name": tool_name,
+                            "tool_status": "completed",
+                            "content": result_str,
+                            "timestamp": timestamp
+                        })
+            else:
+                # Simple text content
+                if role == 'user':
+                    messages_data.append({
+                        "id": str(uuid.uuid4()),
+                        "role": "user",
+                        "type": "user",
+                        "content": str(content),
+                        "timestamp": timestamp
+                    })
+                elif role == 'model':
+                    messages_data.append({
+                        "id": str(uuid.uuid4()),
+                        "role": "assistant",
+                        "type": "assistant",
+                        "content": str(content),
+                        "timestamp": timestamp
+                    })
+                
+        await self._send_message(context, {
+            "type": "session_messages",
+            "session_id": session_id,
+            "messages": messages_data
+        })
+        
+    async def _send_message(self, context: ConnectionContext, message: dict):
+        """Send message to client"""
+        if 'id' not in message:
+            message['id'] = f"{message.get('type', 'unknown')}_{datetime.now().timestamp()}"
+            
+        try:
+            await context.websocket.send_json(message)
+        except Exception as e:
+            asyncio.create_task(self.disconnect_client(context.websocket))
+            
+    async def _send_error(self, context: ConnectionContext, error_message: str):
+        """Send error message"""
+        await self._send_message(context, {
+            "type": "error",
+            "content": error_message
+        })
+        
+    def _get_session_last_update_time(self, session: Session) -> datetime:
+        """Get session last update time"""
+        # Get metadata from session.state
+        if hasattr(session, 'state') and isinstance(session.state, dict):
+            metadata = session.state.get('metadata', {})
+            last_message_at = metadata.get('last_message_at')
+            if last_message_at:
+                try:
+                    return datetime.fromisoformat(last_message_at)
+                except:
+                    pass
+                    
+        # Use ADK native last_update_time
+        if hasattr(session, 'last_update_time'):
+            return datetime.fromtimestamp(session.last_update_time)
+            
+        return datetime.min
+        
+    def _get_base_url(self, context: ConnectionContext) -> str:
+        """动态获取基础URL"""
+        headers = getattr(context, 'request_headers', {})
+        
+        # 1. 从Origin头获取
+        origin = headers.get('origin', '')
+        if origin:
+            return origin
+        
+        # 2. 从Host头获取
+        host = headers.get('host', '')
+        if host:
+            forwarded_proto = headers.get('x-forwarded-proto', '')
+            protocol = 'https' if forwarded_proto == 'https' else 'http'
+            return f"{protocol}://{host}"
+        
+        # 3. 从环境变量获取
+        base_url = os.environ.get('AGENT_API_URL', '')
+        if base_url:
+            return base_url.rstrip('/')
+        
+        # 4. 默认值
+        return "http://localhost:8000"
+
+    def _build_message_content(self, session, message: str, attachments: list = None) -> types.Content:
+        """Build message content (including history context and attachments)"""
+        # Build message with file attachment information
+        enhanced_message = message
+        
+        if attachments and hasattr(self, 'current_context'):
+            # 获取基础URL和用户ID
+            base_url = self._get_base_url(self.current_context)
+            user_id = self.current_context.get_user_identifier()
+            
+            file_info = "\n\n已上传文件："
+            for att in attachments:
+                # 使用相对路径
+                if 'relative_path' in att:
+                    file_info += f"\n- {att['name']} ({att['size']} bytes)"
+                    file_info += f"\n  file_path: {att['relative_path']}"
+                else:
+                    # 兜底方案：构建相对路径
+                    filename = att.get('saved_name', att['name'])
+                    relative_path = f"output/{filename}"
+                    
+                    file_info += f"\n- {att['name']} ({att['size']} bytes)"
+                    file_info += f"\n  file_path: {relative_path}"
+                
+            enhanced_message = message + file_info if message else file_info.strip()
+        
+        return types.Content(
+            role='user',
+            parts=[types.Part(text=enhanced_message)]
+        )
+        
     def _format_response_data(self, response_data):
-        """格式化响应数据"""
+        """Format response data"""
         if isinstance(response_data, (dict, list, tuple)):
             try:
                 return json.dumps(response_data, indent=2, ensure_ascii=False)
             except:
                 return str(response_data)
         return str(response_data) if not isinstance(response_data, str) else response_data
-    
+        
     def _extract_final_response(self, events: list) -> Optional[str]:
-        """从事件列表中提取最终响应"""
+        """Extract final response from event list"""
         for event in reversed(events):
             if hasattr(event, 'content') and event.content:
                 content = event.content
@@ -471,157 +933,186 @@ class SessionManager:
                             text_parts.append(part.text)
                     if text_parts:
                         return '\n'.join(text_parts)
-                    elif hasattr(content, 'text') and content.text:
-                        return content.text
-                elif hasattr(event, 'text') and event.text:
-                    return event.text
-                elif hasattr(event, 'output') and event.output:
-                    return event.output
-                elif hasattr(event, 'message') and event.message:
-                    return event.message
         return None
-    
-    async def process_message(self, context: ConnectionContext, message: str):
-        """处理用户消息"""
-        # 检查是否设置了 project_id（必填但不验证所有权）
-        if not context.project_id and not os.environ.get('BOHR_PROJECT_ID'):
-            await context.websocket.send_json({
-                "type": "error", 
-                "content": "🔒 请先设置项目 ID"
-            })
-            return
         
-        if not context.current_session_id:
-            await context.websocket.send_json({
-                "type": "error", 
-                "content": "没有活动的会话"
-            })
-            return
+    def _event_to_message_data(self, event) -> Optional[dict]:
+        """Convert event to message data"""
+        if not event:
+            return None
             
-        # 等待runner初始化完成
-        retry_count = 0
-        max_retries = int(self.MAX_WAIT_TIME / self.WAIT_INTERVAL)
-        while context.current_session_id not in context.runners and retry_count < max_retries:
-            await asyncio.sleep(self.WAIT_INTERVAL)
-            retry_count += 1
-            
-        if context.current_session_id not in context.runners:
-            await context.websocket.send_json({
-                "type": "error", 
-                "content": "会话初始化失败，请重试"
-            })
-            return
-            
-        session = context.sessions[context.current_session_id]
-        runner = context.runners[context.current_session_id]
+        # Handle different types of events
+        message_data = {
+            "id": str(uuid.uuid4()),
+            "timestamp": self._format_timestamp(getattr(event, "timestamp", None))
+        }
         
-        # 保存用户消息到会话历史
-        session.add_message("user", message)
+        # Extract info based on event type
+        if hasattr(event, 'type'):
+            message_data["type"] = event.type
+            
+        if hasattr(event, 'role'):
+            # Unify role field: convert role to frontend-expected type format
+            role = event.role
+            if role == 'model':
+                message_data["type"] = "assistant"
+            elif role == 'user':
+                message_data["type"] = "user"
+            else:
+                message_data["type"] = role
+            message_data["role"] = role  # Preserve original role info
+            
+        if hasattr(event, 'content'):
+            # Handle Content objects
+            content = event.content
+            if hasattr(content, 'parts'):
+                text_parts = []
+                tool_calls = []
+                tool_responses = []
+                
+                for part in content.parts:
+                    # Handle text content
+                    if hasattr(part, 'text') and part.text is not None:
+                        text_parts.append(part.text)
+                    
+                    # Handle tool calls
+                    if hasattr(part, 'function_call'):
+                        func_call = part.function_call
+                        tool_calls.append({
+                            "id": getattr(func_call, 'id', ''),
+                            "name": getattr(func_call, 'name', ''),
+                            "args": getattr(func_call, 'args', {})
+                        })
+                    
+                    # Handle tool responses
+                    if hasattr(part, 'function_response'):
+                        func_resp = part.function_response
+                        tool_responses.append({
+                            "id": getattr(func_resp, 'id', ''),
+                            "name": getattr(func_resp, 'name', ''),
+                            "response": getattr(func_resp, 'response', {})
+                        })
+                
+                # Set message content
+                if text_parts:
+                    message_data["content"] = '\n'.join(text_parts)
+                
+                # Set tool call info
+                if tool_calls:
+                    message_data["tool_calls"] = tool_calls
+                
+                if tool_responses:
+                    message_data["tool_responses"] = tool_responses
+                    
+            else:
+                message_data["content"] = str(content)
         
-        # 获取用户特定的文件目录
+        # Only return messages with content
+        if "content" in message_data or "tool_calls" in message_data or "tool_responses" in message_data:
+            return message_data
+            
+        return None
+        
+    def _format_timestamp(self, timestamp) -> str:
+        """Format timestamp"""
+        if timestamp is None:
+            return datetime.now(timezone.utc).isoformat()
+        
+        if isinstance(timestamp, (int, float)):
+            # Convert Unix timestamp to ISO format
+            return datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat()
+        
+        if isinstance(timestamp, str):
+            return timestamp
+            
+        return datetime.now(timezone.utc).isoformat()
+        
+        
+    def get_user_identifier_from_request(self, access_key: str = None, app_key: str = None) -> Optional[str]:
+        """
+        Get user identifier from request info (prefer from connected context)
+        
+        Args:
+            access_key: Bohrium access key
+            app_key: Bohrium app key (reserved for future extension)
+            
+        Returns:
+            User identifier or None
+        """
+        if access_key:
+            # Check if there's a connected user
+            for context in self.active_connections.values():
+                if context.access_key == access_key:
+                    return context.get_user_identifier()
+        return None
+        
+    async def send_sessions_list(self, context: ConnectionContext):
+        """
+        Send session list to client
+        
+        Args:
+            context: Connection context
+        """
         user_identifier = context.get_user_identifier()
-        user_files_dir = self.user_file_manager.get_user_files_dir(user_id=user_identifier)
+        session_service = self.session_services.get(user_identifier)
         
-        # 保存当前工作目录
-        original_cwd = os.getcwd()
-        
+        if not session_service:
+            await self._send_error(context, "会话服务未初始化")
+            return
+            
         try:
-            # 切换到用户文件目录
-            os.chdir(user_files_dir)
-            logger.info(f"切换工作目录到用户文件夹: {user_files_dir}")
+            # Get session list
+            response = await session_service.list_sessions(
+                app_name=self.app_name,
+                user_id=user_identifier
+            )
             
-            # 构建包含历史上下文的消息
-            content = self._build_history_context(session, message)
+            # Get session list from ListSessionsResponse object
+            sessions = response.sessions if hasattr(response, 'sessions') else []
             
-            # 收集所有事件
-            all_events = []
-            seen_tool_calls = set()  # 跟踪已发送的工具调用
-            seen_tool_responses = set()  # 跟踪已发送的工具响应
-            
-            async for event in runner.run_async(
-                    new_message=content,
-                    user_id=context.user_id,
-                    session_id=context.current_session_id
-                ):
-                    all_events.append(event)
-                    # 处理工具相关事件
-                    await self._handle_tool_events(event, context, session, seen_tool_calls, seen_tool_responses)
-            
-            # 提取最终响应
-            final_response = self._extract_final_response(all_events)
-            
-            # 只发送最后一个响应内容
-            if final_response:
-                # 保存助手回复到会话历史
-                session.add_message("assistant", final_response)
+            sessions_data = []
+            for session in sessions:
+                # Uniformly use helper method to get latest metadata
+                metadata = await self._get_session_metadata(session_service, user_identifier, session.id)
+                if not metadata:  # If fetch fails, use original data as fallback
+                    metadata = session.state.get('metadata', {}) if session.state else {}
                 
-                await self.send_to_connection(context, {
-                    "type": "assistant",
-                    "content": final_response,
-                    "session_id": context.current_session_id
+                title = metadata.get("title", "未命名")
+                    
+                sessions_data.append({
+                    "id": session.id,
+                    "title": title,
+                    "created_at": metadata.get("created_at", datetime.now().isoformat()),
+                    "last_message_at": metadata.get("last_message_at", datetime.now().isoformat()),
+                    "message_count": metadata.get("message_count", 0)
                 })
-            
-            # 发送一个空的完成标记，前端会识别这个来停止loading
-            await self.send_to_connection(context, {
-                "type": "complete",
-                "content": ""
-            })
-                    
-        except Exception as e:
-            logger.error(f"处理消息时出错: {e}", exc_info=True)
-            await context.websocket.send_json({
-                "type": "error",
-                "content": f"处理消息失败: {str(e)}"
-            })
-        finally:
-            # 无论如何都要恢复原工作目录
-            try:
-                os.chdir(original_cwd)
-                logger.info(f"恢复工作目录: {original_cwd}")
-            except Exception as e:
-                logger.error(f"恢复工作目录失败: {e}")
-        
-        # 如果有Bohrium用户ID，保存会话
-        if context.bohrium_user_id and context.current_session_id:
-            try:
-                user_identifier = context.get_user_identifier()
-                await self.persistent_manager.save_session(
-                    user_identifier,
-                    session
-                )
-                session.mark_saved()  # 标记为已保存
-            except Exception as e:
-                logger.error(f"自动保存会话失败: {e}")
-    
-    async def _auto_save_sessions(self, context: ConnectionContext):
-        """定期自动保存会话"""
-        while True:
-            try:
-                # 等待指定间隔
-                await asyncio.sleep(self.AUTO_SAVE_INTERVAL)
                 
-                # 只保存修改过的会话
-                if context.bohrium_user_id and context.sessions:
-                    user_identifier = context.get_user_identifier()
-                    saved_count = 0
-                    modified_count = 0
-                    
-                    for session in context.sessions.values():
-                        if session.is_modified:  # 只保存修改过的会话
-                            modified_count += 1
-                            try:
-                                await self.persistent_manager.save_session(user_identifier, session)
-                                session.mark_saved()  # 标记为已保存
-                                saved_count += 1
-                            except Exception as e:
-                                logger.error(f"自动保存会话 {session.id} 失败: {e}")
-                    
-                    if saved_count > 0:
-                        logger.debug(f"自动保存完成，已保存 {saved_count}/{modified_count} 个修改过的会话")
-                        
-            except asyncio.CancelledError:
-                logger.debug("自动保存任务被取消")
-                break
-            except Exception as e:
-                logger.error(f"自动保存任务异常: {e}")
-                # 继续运行，不要退出
+            await self._send_message(context, {
+                "type": "sessions_list",
+                "sessions": sessions_data,
+                "current_session_id": context.current_session_id
+            })
+            
+        except Exception as e:
+            await self._send_error(context, "获取会话列表失败")
+            
+    async def send_session_messages(self, context: ConnectionContext, session_id: str):
+        """
+        Send message history for specified session
+        
+        Args:
+            context: Connection context
+            session_id: Session ID
+        """
+        user_identifier = context.get_user_identifier()
+        session_service = self.session_services.get(user_identifier)
+        
+        if not session_service:
+            await self._send_error(context, "会话服务未初始化")
+            return
+            
+        try:
+            # Directly call internal method, reuse logic
+            await self._send_session_messages(context, session_service, session_id)
+            
+        except Exception as e:
+            await self._send_error(context, "获取会话消息失败")
