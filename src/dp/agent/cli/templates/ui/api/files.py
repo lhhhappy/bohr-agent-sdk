@@ -6,7 +6,8 @@ import zipfile
 import tempfile
 import shutil
 from pathlib import Path
-from fastapi import Request, Response
+from typing import List
+from fastapi import Request, Response, File, UploadFile
 from fastapi.responses import JSONResponse, PlainTextResponse, FileResponse, StreamingResponse
 from bohrium_open_sdk import OpenSDK
 
@@ -14,10 +15,12 @@ from config.agent_config import agentconfig
 from server.utils import get_ak_info_from_request
 from server.user_files import UserFileManager
 
-# Global user file manager
-user_working_dir = os.environ.get('USER_WORKING_DIR', Path.cwd())
+
+
+
 # Get sessions directory path from config
 files_config = agentconfig.get_files_config()
+user_working_dir = os.environ.get('USER_WORKING_DIR', os.getcwd()) 
 sessions_dir = files_config.get('sessionsDir', '.agent_sessions')
 user_file_manager = UserFileManager(user_working_dir, sessions_dir)
 
@@ -389,6 +392,76 @@ async def download_folder(request: Request, folder_path: str):
                 zip_path.unlink()
             raise e
             
+    except Exception as e:
+        return JSONResponse(
+            content={"error": str(e)},
+            status_code=500
+        )
+
+
+async def delete_file(request: Request, file_path: str):
+    """删除文件或文件夹"""
+    try:
+        # 获取用户身份
+        access_key, app_key = get_ak_info_from_request(request.headers)
+        
+        # 获取 session_id (从 cookie)
+        session_id = None
+        cookie_header = request.headers.get("cookie", "")
+        if cookie_header:
+            from http.cookies import SimpleCookie
+            simple_cookie = SimpleCookie()
+            simple_cookie.load(cookie_header)
+            if "session_id" in simple_cookie:
+                session_id = simple_cookie["session_id"].value
+        
+        # 获取用户唯一标识符
+        user_identifier = get_user_identifier(access_key, app_key, session_id)
+        
+        # 获取用户特定的文件目录
+        user_files_dir = user_file_manager.get_user_files_dir(user_identifier)
+        
+        # 处理文件路径
+        if file_path.startswith('/'):
+            target_path = Path(file_path)
+        else:
+            # 相对路径，基于用户目录
+            target_path = user_files_dir / file_path
+        
+        # 安全检查：确保文件在用户目录内
+        try:
+            target_path_resolved = target_path.resolve()
+            user_files_dir_resolved = user_files_dir.resolve()
+            if not str(target_path_resolved).startswith(str(user_files_dir_resolved)):
+                return JSONResponse(
+                    content={"error": "访问被拒绝"},
+                    status_code=403
+                )
+        except:
+            return JSONResponse(
+                content={"error": "无效的文件路径"},
+                status_code=400
+            )
+        
+        # 检查文件是否存在
+        if not target_path.exists():
+            return JSONResponse(
+                content={"error": "文件或文件夹不存在"},
+                status_code=404
+            )
+        
+        # 删除文件或文件夹
+        if target_path.is_file():
+            target_path.unlink()
+        else:
+            # 递归删除文件夹
+            shutil.rmtree(target_path)
+        
+        return JSONResponse({
+            "success": True,
+            "message": f"成功删除: {target_path.name}"
+        })
+        
     except Exception as e:
         return JSONResponse(
             content={"error": str(e)},

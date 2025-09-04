@@ -146,6 +146,9 @@ class SessionManager:
         context = self.active_connections[websocket]
         user_identifier = context.get_user_identifier()
         
+        # 标记连接为已断开，防止后续操作
+        context.is_connected = False
+        
         # Clean up SessionService
         if user_identifier in self.session_services:
             del self.session_services[user_identifier]
@@ -154,6 +157,11 @@ class SessionManager:
         for key in list(self.runners.keys()):
             if key.startswith(f"{user_identifier}_"):
                 del self.runners[key]
+        
+        # 清理相关的错误缓存
+        for key in list(self._runner_errors.keys()):
+            if key.startswith(f"{user_identifier}_"):
+                del self._runner_errors[key]
                 
         # Clean up connection context
         context.cleanup()
@@ -275,7 +283,9 @@ class SessionManager:
             
         return True
         
-    async def process_message(self, context: ConnectionContext, message: str):
+    async def process_message(self, context: ConnectionContext, message: str, attachments: list = None):
+        # 保存context引用以供URL生成使用
+        self.current_context = context
         """
         Process user message
         
@@ -337,7 +347,7 @@ class SessionManager:
             os.chdir(user_files_dir)
             
             # Build message content
-            content = self._build_message_content(session, message)
+            content = self._build_message_content(session, message, attachments)
             
             # Process message stream
             await self._process_message_stream(
@@ -457,9 +467,16 @@ class SessionManager:
             
             # Create Runner
             logger.info(f"🏃 创建 Runner...")
+            
+            # 检查连接是否仍然有效
+            if not context.is_connected:
+                logger.warning(f"⚠️ 连接已断开，跳过 Runner 初始化: {runner_key}")
+                return
+                
             session_service = self.session_services.get(user_identifier)
             if not session_service:
-                raise ValueError(f"找不到用户 {user_identifier} 的 SessionService")
+                logger.warning(f"⚠️ SessionService 已被清理，跳过 Runner 初始化: {runner_key}")
+                return
                 
             runner = Runner(
                 agent=user_agent,
@@ -840,13 +857,59 @@ class SessionManager:
             
         return datetime.min
         
-    def _build_message_content(self, session, message: str) -> types.Content:
-        """Build message content (including history context)"""
-        # Simple implementation, can be extended as needed
-        # session parameter reserved for future extension
+    def _get_base_url(self, context: ConnectionContext) -> str:
+        """动态获取基础URL"""
+        headers = getattr(context, 'request_headers', {})
+        
+        # 1. 从Origin头获取
+        origin = headers.get('origin', '')
+        if origin:
+            return origin
+        
+        # 2. 从Host头获取
+        host = headers.get('host', '')
+        if host:
+            forwarded_proto = headers.get('x-forwarded-proto', '')
+            protocol = 'https' if forwarded_proto == 'https' else 'http'
+            return f"{protocol}://{host}"
+        
+        # 3. 从环境变量获取
+        base_url = os.environ.get('AGENT_API_URL', '')
+        if base_url:
+            return base_url.rstrip('/')
+        
+        # 4. 默认值
+        return "http://localhost:8000"
+
+    def _build_message_content(self, session, message: str, attachments: list = None) -> types.Content:
+        """Build message content (including history context and attachments)"""
+        # Build message with file attachment information
+        enhanced_message = message
+        
+        if attachments and hasattr(self, 'current_context'):
+            # 获取基础URL和用户ID
+            base_url = self._get_base_url(self.current_context)
+            user_id = self.current_context.get_user_identifier()
+            
+            file_info = "\n\n已上传文件："
+            for att in attachments:
+                # 使用相对路径
+                if 'relative_path' in att:
+                    file_info += f"\n- {att['name']} ({att['size']} bytes)"
+                    file_info += f"\n  file_path: {att['relative_path']}"
+                else:
+                    # 兜底方案：构建相对路径
+                    filename = att.get('saved_name', att['name'])
+                    relative_path = f"output/{filename}"
+                    
+                    file_info += f"\n- {att['name']} ({att['size']} bytes)"
+                    file_info += f"\n  file_path: {relative_path}"
+                
+            enhanced_message = message + file_info if message else file_info.strip()
+        
         return types.Content(
             role='user',
-            parts=[types.Part(text=message)]
+            parts=[types.Part(text=enhanced_message)]
         )
         
     def _format_response_data(self, response_data):

@@ -13,6 +13,8 @@ from config.agent_config import agentconfig
 
 # Import all API endpoints
 from api import websocket, files, sessions, config as config_api, projects, debug
+from api.files_upload import upload_files
+from api.files_user import get_user_file
 
 
 def create_app() -> FastAPI:
@@ -58,9 +60,12 @@ def create_app() -> FastAPI:
     app.get("/api/status")(config_api.status)
     app.get("/api/config")(config_api.get_config)
     app.get("/api/files/tree")(files.get_file_tree)
+    app.get("/api/files/{user_id}/output/{filename}")(get_user_file)
     app.get("/api/files{file_path:path}")(files.get_file_content)
     app.get("/api/download/file{file_path:path}")(files.download_file)
     app.get("/api/download/folder{folder_path:path}")(files.download_folder)
+    app.post("/api/upload")(upload_files)
+    app.delete("/api/files{file_path:path}")(files.delete_file)
     app.delete("/api/sessions/clear")(sessions.clear_user_sessions)
     app.get("/api/sessions/export")(sessions.export_user_sessions)
     app.get("/api/projects")(projects.get_projects)

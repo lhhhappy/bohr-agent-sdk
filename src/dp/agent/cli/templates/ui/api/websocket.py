@@ -51,8 +51,9 @@ async def websocket_endpoint(websocket: WebSocket):
             
             if message_type == "message":
                 content = data.get("content", "").strip()
-                if content:
-                    await manager.process_message(context, content)
+                attachments = data.get("attachments", [])
+                if content or attachments:
+                    await manager.process_message(context, content, attachments)
                     
             elif message_type == "create_session":
                 # Create new session

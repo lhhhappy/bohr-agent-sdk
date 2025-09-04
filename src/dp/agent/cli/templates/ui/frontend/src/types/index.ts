@@ -1,3 +1,14 @@
+// File Attachment Type
+export interface FileAttachment {
+  name: string
+  saved_name?: string
+  path: string
+  relative_path?: string
+  url: string
+  size: number
+  mime_type: string
+}
+
 // Message Types
 export interface Message {
   id: string
@@ -8,6 +19,7 @@ export interface Message {
   tool_status?: string
   tool_args?: any  // 工具调用参数
   isStreaming?: boolean
+  attachments?: FileAttachment[]  // 附件列表
 }
 
 // Session Types
