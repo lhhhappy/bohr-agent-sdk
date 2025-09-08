@@ -891,19 +891,9 @@ class SessionManager:
             base_url = self._get_base_url(self.current_context)
             user_id = self.current_context.get_user_identifier()
             
-            file_info = "\n\n已上传文件："
+            file_info = "\n\n用户已上传文件，请你跟据上传的文件路径，调用传入所希望调用的工具中，："
             for att in attachments:
-                # 使用相对路径
-                if 'relative_path' in att:
-                    file_info += f"\n- {att['name']} ({att['size']} bytes)"
-                    file_info += f"\n  file_path: {att['relative_path']}"
-                else:
-                    # 兜底方案：构建相对路径
-                    filename = att.get('saved_name', att['name'])
-                    relative_path = f"output/{filename}"
-                    
-                    file_info += f"\n- {att['name']} ({att['size']} bytes)"
-                    file_info += f"\n  file_path: {relative_path}"
+                file_info += f"\n  文件路径: {att['relative_path']}"
                 
             enhanced_message = message + file_info if message else file_info.strip()
         
