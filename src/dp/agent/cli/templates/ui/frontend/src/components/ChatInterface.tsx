@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
-import { Send, Bot, FileText, Paperclip, X } from 'lucide-react'
+import { Send, Bot, FileText, Paperclip, X, Globe } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import SessionList from './SessionList'
 import FileExplorer from './FileExplorer'
@@ -7,6 +7,7 @@ import { ResizablePanel } from './ResizablePanel'
 import { useAgentConfig } from '../hooks/useAgentConfig'
 import { MessageAnimation, LoadingDots } from './MessageAnimation'
 import { MemoizedMessage } from './MemoizedMessage'
+import { useTranslation } from '../hooks/useTranslation'
 import axios from 'axios'
 import { Message, Session, FileNode, WSMessage, FileAttachment } from '../types'
 
@@ -46,6 +47,9 @@ const ChatInterface: React.FC = () => {
   // Load agent configuration
   const { config } = useAgentConfig()
   
+  // Internationalization
+  const { t, language, setLanguage } = useTranslation()
+  
   // Load projects when component mounts or when connection status changes
   useEffect(() => {
     if (connectionStatus === 'connected' && !projects.length && !loadingProjects) {
@@ -61,11 +65,11 @@ const ChatInterface: React.FC = () => {
       if (response.data.success && response.data.projects) {
         setProjects(response.data.projects)
       } else {
-        setProjectsError(response.data.error || '获取项目列表失败')
+        setProjectsError(response.data.error || t.errors.getProjectListFailed)
       }
     } catch (error) {
       console.error('Failed to load projects:', error)
-      setProjectsError('无法连接到服务器')
+      setProjectsError(t.errors.cannotConnectToServer)
     } finally {
       setLoadingProjects(false)
     }
@@ -317,7 +321,7 @@ const ChatInterface: React.FC = () => {
       }
     } catch (error: any) {
       console.error('Upload failed:', error)
-      alert(error.response?.data?.error || '文件上传失败')
+      alert(error.response?.data?.error || t.errors.fileUploadFailed)
     } finally {
       setUploading(false)
     }
@@ -336,7 +340,7 @@ const ChatInterface: React.FC = () => {
   const handleSend = () => {
     if (!input.trim() && attachments.length === 0) return
     if (!ws || connectionStatus !== 'connected') {
-      alert('未连接到服务器，请稍后重试')
+      alert(t.errors.serverDisconnected)
       return
     }
 
@@ -512,7 +516,7 @@ const ChatInterface: React.FC = () => {
       const errorMessage: Message = {
         id: `error-${Date.now()}`,
         role: 'assistant',
-        content: `❌ 错误: ${'content' in data ? (data as any).content : '未知错误'}`,
+        content: `❌ ${t.errors.general}: ${'content' in data ? (data as any).content : t.errors.unknownError}`,
         timestamp: new Date()
       }
       setMessages(prev => [...prev, errorMessage])
@@ -595,7 +599,7 @@ const ChatInterface: React.FC = () => {
                       paddingRight: '2.5rem'
                     }}
                   >
-                    <option value="">选择项目...</option>
+                    <option value="">{t.placeholders.selectProject}</option>
                     {projects.map(project => (
                       <option key={project.id} value={project.id.toString()}>
                         {project.name}
@@ -691,7 +695,7 @@ const ChatInterface: React.FC = () => {
                       exit={{ opacity: 0 }}
                       className="flex items-center gap-2"
                     >
-                      <span className="text-sm text-gray-500 dark:text-gray-400">已设置:</span>
+                      <span className="text-sm text-gray-500 dark:text-gray-400">{t.project.alreadySet}</span>
                       <span className="text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded">
                         {projects.find(p => p.id.toString() === projectId)?.name || projectId}
                       </span>
@@ -705,7 +709,15 @@ const ChatInterface: React.FC = () => {
               className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors btn-animated"
             >
               <FileText className="w-4 h-4" />
-              {showFileExplorer ? '隐藏文件' : '查看文件'}
+              {showFileExplorer ? t.actions.hideFiles : t.actions.showFiles}
+            </button>
+            <button
+              onClick={() => setLanguage(language === 'zh' ? 'en' : 'zh')}
+              className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors btn-animated"
+              title={language === 'zh' ? 'Switch to English' : '切换到中文'}
+            >
+              <Globe className="w-4 h-4" />
+              <span>{language === 'zh' ? 'EN' : 'CN'}</span>
             </button>
             <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium ${
               connectionStatus === 'connected' 
@@ -720,9 +732,9 @@ const ChatInterface: React.FC = () => {
                 'bg-red-500'
               }`} />
               <span>
-                {connectionStatus === 'connected' ? '已连接' : 
-                 connectionStatus === 'connecting' ? '连接中...' : 
-                 '未连接'}
+                {connectionStatus === 'connected' ? t.connection.connected : 
+                 connectionStatus === 'connecting' ? t.connection.connecting : 
+                 t.connection.disconnected}
               </span>
             </div>
           </div>
@@ -742,11 +754,11 @@ const ChatInterface: React.FC = () => {
                   </div>
                   <div className="ml-3">
                     <h3 className="text-sm font-medium text-yellow-800 dark:text-yellow-200">
-                      需要选择项目
+                      {t.project.needToSelect}
                     </h3>
                     <div className="mt-2 text-sm text-yellow-700 dark:text-yellow-300">
-                      <p>请从下拉列表中选择您的 Bohrium 项目以开始使用</p>
-                      <p className="mt-1 text-xs">如果看不到项目列表，请检查您的 AccessKey 配置</p>
+                      <p>{t.project.selectFromDropdown}</p>
+                      <p className="mt-1 text-xs">{t.project.checkAccessKey}</p>
                     </div>
                   </div>
                 </div>
@@ -859,7 +871,7 @@ const ChatInterface: React.FC = () => {
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploading || connectionStatus !== 'connected'}
                 className="p-3 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors disabled:opacity-50"
-                title="上传文件"
+                title={t.actions.uploadFile}
               >
                 <Paperclip className="w-5 h-5" />
               </button>
@@ -869,7 +881,7 @@ const ChatInterface: React.FC = () => {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="输入消息..."
+                placeholder={t.placeholders.messageInput}
                 className="flex-1 resize-none rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 transition-all input-animated glow"
                 rows={1}
                 style={{
@@ -886,10 +898,10 @@ const ChatInterface: React.FC = () => {
                 onClick={handleSend}
                 disabled={(!input.trim() && attachments.length === 0) || isLoading || connectionStatus !== 'connected' || (requireProjectId && !isProjectIdSet)}
                 className="px-4 py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl font-medium hover:from-blue-600 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-lg hover:shadow-xl flex items-center gap-2 btn-animated liquid-button"
-                title={requireProjectId && !isProjectIdSet ? '🔒 请先选择项目' : ''}
+                title={requireProjectId && !isProjectIdSet ? t.project.pleaseSelectFirst : ''}
               >
                 <Send className="w-4 h-4" />
-                发送
+                {t.actions.send}
               </button>
             </div>
           </div>

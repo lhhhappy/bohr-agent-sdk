@@ -191,7 +191,7 @@ class SessionManager:
             "created_at": datetime.now().isoformat(),
             "last_message_at": datetime.now().isoformat(),
             "message_count": 0,
-            "title": "未命名",
+            "title": "Untitled",
             "project_id": context.project_id
         }
         
@@ -412,7 +412,7 @@ class SessionManager:
             "created_at": datetime.now().isoformat(),
             "last_message_at": datetime.now().isoformat(),
             "message_count": 0,
-            "title": "未命名",
+            "title": "Untitled",
             "project_id": context.project_id
         }
         
@@ -428,12 +428,13 @@ class SessionManager:
         # Initialize Runner
         asyncio.create_task(self._init_runner(context, session.id))
         
-    async def _init_runner(self, context: ConnectionContext, session_id: str):
-        """Asynchronously initialize Runner"""
+    async def _init_runner(self, context: ConnectionContext, session_id: str, retry_count: int = 0):
+        """Asynchronously initialize Runner with retry mechanism"""
         user_identifier = context.get_user_identifier()
         runner_key = f"{user_identifier}_{session_id}"
+        max_retries = 3
         
-        logger.info(f"🚀 开始初始化 Runner: {runner_key}")
+        logger.info(f"🚀 开始初始化 Runner: {runner_key} (尝试 {retry_count + 1}/{max_retries})")
         logger.debug(f"  用户标识: {user_identifier}")
         logger.debug(f"  会话ID: {session_id}")
         logger.debug(f"  Access Key: {'有' if context.access_key else '无'}")
@@ -488,19 +489,34 @@ class SessionManager:
             logger.info(f"✅ Runner 初始化成功: {runner_key}")
             logger.debug(f"  当前 Runner 数量: {len(self.runners)}")
             
-        except ImportError as e:
-            error_msg = f"❌ 导入错误: {str(e)}\n{traceback.format_exc()}"
+            # 清除之前的错误记录
+            if runner_key in self._runner_errors:
+                del self._runner_errors[runner_key]
+            
+        except (ImportError, Exception) as e:
+            error_type = "导入错误" if isinstance(e, ImportError) else "Runner 初始化失败"
+            error_msg = f"❌ {error_type}: {str(e)}\n类型: {type(e).__name__}\n{traceback.format_exc()}"
             logger.error(error_msg)
-            # 存储错误信息
-            self._runner_errors[runner_key] = error_msg
-        except Exception as e:
-            error_msg = f"❌ Runner 初始化失败: {str(e)}\n类型: {type(e).__name__}\n{traceback.format_exc()}"
-            logger.error(error_msg)
-            # 存储错误信息
-            self._runner_errors[runner_key] = error_msg
+            
+            # 如果还有重试机会
+            if retry_count < max_retries - 1:
+                logger.info(f"🔄 准备重试 Runner 初始化: {runner_key}")
+                # 清理可能的部分初始化状态
+                if runner_key in self.runners:
+                    del self.runners[runner_key]
+                
+                # 等待一小段时间后重试
+                await asyncio.sleep(1)
+                
+                # 递归调用自己进行重试
+                await self._init_runner(context, session_id, retry_count + 1)
+            else:
+                # 所有重试都失败，存储错误信息
+                self._runner_errors[runner_key] = f"{error_msg}\n\n已尝试 {max_retries} 次初始化，全部失败。"
+                logger.error(f"❌ Runner 初始化彻底失败: {runner_key}，已尝试 {max_retries} 次")
             
     async def _get_or_wait_runner(self, context: ConnectionContext, session_id: str) -> Optional[Runner]:
-        """Get or wait for Runner initialization"""
+        """Get or wait for Runner initialization with auto-recovery"""
         user_identifier = context.get_user_identifier()
         runner_key = f"{user_identifier}_{session_id}"
         
@@ -509,19 +525,43 @@ class SessionManager:
         # Wait for Runner initialization
         retry_count = 0
         max_retries = int(self.MAX_WAIT_TIME / self.WAIT_INTERVAL)
+        recovery_attempted = False
         
         while runner_key not in self.runners and retry_count < max_retries:
             # 检查是否有错误
             if runner_key in self._runner_errors:
                 logger.error(f"Runner 初始化已失败: {self._runner_errors[runner_key]}")
-                # 发送详细的错误信息到前端
-                await self._send_error(
-                    context, 
-                    f"会话初始化失败\n\n错误详情：\n{self._runner_errors[runner_key]}"
-                )
-                # 清除错误缓存
-                del self._runner_errors[runner_key]
-                return None
+                
+                # 如果还没有尝试过恢复，尝试一次
+                if not recovery_attempted:
+                    recovery_attempted = True
+                    logger.info(f"🔧 尝试自动恢复 Runner: {runner_key}")
+                    
+                    # 清除错误记录
+                    del self._runner_errors[runner_key]
+                    
+                    # 触发新的初始化尝试
+                    asyncio.create_task(self._init_runner(context, session_id))
+                    
+                    # 继续等待
+                    await asyncio.sleep(self.WAIT_INTERVAL)
+                    retry_count += 1
+                    continue
+                else:
+                    # 已经尝试过恢复但仍然失败
+                    # 发送详细的错误信息到前端
+                    await self._send_error(
+                        context, 
+                        f"会话初始化失败\n\n错误详情：\n{self._runner_errors.get(runner_key, '未知错误')}\n\n"
+                        f"建议：\n"
+                        f"1. 请尝试新建一个会话\n"
+                        f"2. 检查 Agent 配置是否正确\n"
+                        f"3. 确认 Project ID 是否有效"
+                    )
+                    # 清除错误缓存
+                    if runner_key in self._runner_errors:
+                        del self._runner_errors[runner_key]
+                    return None
                 
             await asyncio.sleep(self.WAIT_INTERVAL)
             retry_count += 1
@@ -534,6 +574,16 @@ class SessionManager:
             logger.info(f"✅ 获取 Runner 成功: {runner_key}")
         else:
             logger.error(f"❌ 超时等待 Runner: {runner_key} (等待了 {self.MAX_WAIT_TIME} 秒)")
+            # 如果超时且没有错误记录，可能是初始化太慢
+            if runner_key not in self._runner_errors:
+                await self._send_error(
+                    context,
+                    f"会话初始化超时\n\n"
+                    f"可能的原因：\n"
+                    f"1. Agent 初始化时间过长\n"
+                    f"2. 系统资源不足\n\n"
+                    f"建议尝试新建会话"
+                )
             
         return runner
         
@@ -715,7 +765,7 @@ class SessionManager:
                 
             sessions_data.append({
                 "id": session.id,
-                "title": metadata.get("title", "未命名"),
+                "title": metadata.get("title", "Untitled"),
                 "created_at": metadata.get("created_at", datetime.now().isoformat()),
                 "last_message_at": metadata.get("last_message_at", datetime.now().isoformat()),
                 "message_count": metadata.get("message_count", 0)
@@ -1066,7 +1116,7 @@ class SessionManager:
                 if not metadata:  # If fetch fails, use original data as fallback
                     metadata = session.state.get('metadata', {}) if session.state else {}
                 
-                title = metadata.get("title", "未命名")
+                title = metadata.get("title", "Untitled")
                     
                 sessions_data.append({
                     "id": session.id,

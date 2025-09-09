@@ -32,6 +32,31 @@ async def upload_files(request: Request, files: List[UploadFile] = File(...)):
         # 获取用户唯一标识符
         user_identifier = get_user_identifier(access_key, app_key, session_id)
         
+        # 检查用户是否已设置 project_id
+        from api.websocket import manager
+        import os
+        
+        # 首先检查环境变量
+        has_project_id = bool(os.environ.get('BOHR_PROJECT_ID'))
+        
+        # 如果环境变量没有设置，检查用户的连接上下文
+        if not has_project_id:
+            # 遍历活动连接，查找当前用户
+            for context in manager.active_connections.values():
+                if context.get_user_identifier() == user_identifier:
+                    has_project_id = bool(context.project_id)
+                    break
+        
+        # 如果没有设置 project_id，拒绝上传
+        if not has_project_id:
+            return JSONResponse(
+                content={
+                    "error": "请先设置项目 ID 后再上传文件。",
+                    "code": "PROJECT_ID_REQUIRED"
+                },
+                status_code=403
+            )
+        
         # 获取用户特定的文件目录
         user_files_dir = user_file_manager.get_user_files_dir(user_identifier)
         output_dir = user_files_dir / "output"
