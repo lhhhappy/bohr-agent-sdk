@@ -1,4 +1,6 @@
-// UI Text Constants - Support for internationalization
+// UI Text Constants - Legacy support (deprecated, use translations.ts instead)
+// This file is kept for backward compatibility
+// New code should use the useTranslation hook
 export const UI_TEXT = {
   // Connection Status
   CONNECTION: {

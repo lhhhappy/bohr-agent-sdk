@@ -11,6 +11,7 @@ import MoleculeViewer from './MoleculeViewer'
 import JsonTreeView from './JsonTreeView'
 import CsvTableView from './CsvTableView'
 import TextViewer from './TextViewer'
+import { useTranslation } from '../hooks/useTranslation'
 
 const API_BASE_URL = ''
 
@@ -38,6 +39,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
   onFileTreeUpdate,
   onLoadFileTree
 }) => {
+  const { t } = useTranslation()
   const [customPath, setCustomPath] = useState<string>('')
   const [isEditingPath, setIsEditingPath] = useState(false)
   const [selectedFileContent, setSelectedFileContent] = useState<string | null>(null)
@@ -158,7 +160,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
         }
       } catch (error) {
         // Error loading file
-        const errorMsg = '加载文件失败: ' + (error as Error).message
+        const errorMsg = `${t.files.loadError}: ` + (error as Error).message
         setSelectedFileContent(errorMsg)
       } finally {
         setLoadingFiles(prev => {
@@ -226,7 +228,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
   }, [])
 
   const handleDeleteFile = useCallback(async (filePath: string, fileName: string) => {
-    const confirmed = window.confirm(`确定要删除 "${fileName}" 吗？`)
+    const confirmed = window.confirm(`${t.files.deleteConfirm} "${fileName}"?`)
     if (!confirmed) return
     
     try {
@@ -256,11 +258,11 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
         // 清除缓存
         fileContentCache.delete(filePath)
         
-        alert('文件删除成功')
+        alert(t.files.deleteSuccess)
       }
     } catch (error) {
-      console.error('删除文件失败:', error)
-      alert('删除文件失败: ' + (error as any).response?.data?.error || '未知错误')
+      console.error(`${t.files.loadError}:`, error)
+      alert(`${t.errors.deleteFileFailed}: ` + ((error as any).response?.data?.error || t.errors.unknownError))
     }
   }, [fileTree, onFileTreeUpdate, selectedFilePath, fileContentCache])
 
@@ -298,7 +300,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
         return (
           <div>
             <div className="mb-2 p-2 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded text-sm">
-              JSON 格式错误：{(e as Error).message}
+              {t.errors.jsonFormatError}: {(e as Error).message}
             </div>
             <TextViewer content={content} language="json" />
           </div>
@@ -461,7 +463,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
                 handleDownloadFolder(node.path)
               }}
               className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors opacity-0 group-hover:opacity-100"
-              title="下载文件夹"
+              title={t.files.downloadFolder}
             >
               <FolderDown className="w-3 h-3 text-gray-500" />
             </button>
@@ -474,7 +476,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
                 handleDownloadFile(node.path)
               }}
               className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors opacity-0 group-hover:opacity-100"
-              title="下载文件"
+              title={t.files.downloadFile}
             >
               <Download className="w-3 h-3 text-gray-500" />
             </button>
@@ -486,7 +488,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
               handleDeleteFile(node.path, node.name)
             }}
             className="p-1 hover:bg-red-100 dark:hover:bg-red-900/20 rounded transition-colors opacity-0 group-hover:opacity-100"
-            title={`删除${node.type === 'file' ? '文件' : '文件夹'}`}
+            title={`${t.actions.delete} ${node.type === 'file' ? t.files.deleteFile : t.files.deleteFolder}`}
           >
             <Trash2 className="w-3 h-3 text-red-500 hover:text-red-600" />
           </button>
@@ -515,7 +517,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
     <div className="h-full bg-white dark:bg-gray-800 flex flex-col">
       {/* Header */}
       <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">文件浏览器</h3>
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{t.files.fileBrowser}</h3>
         <div className="flex items-center gap-2">
           <button
             onClick={() => setIsEditingPath(!isEditingPath)}
@@ -566,7 +568,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
               }}
               className="px-3 py-1.5 text-sm bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
             >
-              加载
+              {t.files.loading2}
             </button>
           </div>
         </div>
@@ -625,7 +627,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
                     <button
                       onClick={() => handleDownloadFile(selectedFilePath)}
                       className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors"
-                      title="下载文件"
+                      title={t.files.downloadFile}
                     >
                       <Download className="w-4 h-4 text-gray-500" />
                     </button>
@@ -667,7 +669,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
                       <button
                         onClick={() => handleDownloadFile(selectedFilePath)}
                         className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors"
-                        title="下载文件"
+                        title={t.files.downloadFile}
                       >
                         <Download className="w-4 h-4 text-gray-500" />
                       </button>
@@ -685,7 +687,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
                       <button
                         onClick={() => setIsFileContentExpanded(!isFileContentExpanded)}
                         className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors"
-                        title={isFileContentExpanded ? '收起' : '展开'}
+                        title={isFileContentExpanded ? t.files.collapse : t.files.expand}
                       >
                         {isFileContentExpanded ? (
                           <Minimize2 className="w-4 h-4 text-gray-500" />

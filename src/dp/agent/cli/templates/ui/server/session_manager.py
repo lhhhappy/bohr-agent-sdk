@@ -191,7 +191,7 @@ class SessionManager:
             "created_at": datetime.now().isoformat(),
             "last_message_at": datetime.now().isoformat(),
             "message_count": 0,
-            "title": "未命名",
+            "title": "Untitled",
             "project_id": context.project_id
         }
         
@@ -412,7 +412,7 @@ class SessionManager:
             "created_at": datetime.now().isoformat(),
             "last_message_at": datetime.now().isoformat(),
             "message_count": 0,
-            "title": "未命名",
+            "title": "Untitled",
             "project_id": context.project_id
         }
         
@@ -765,7 +765,7 @@ class SessionManager:
                 
             sessions_data.append({
                 "id": session.id,
-                "title": metadata.get("title", "未命名"),
+                "title": metadata.get("title", "Untitled"),
                 "created_at": metadata.get("created_at", datetime.now().isoformat()),
                 "last_message_at": metadata.get("last_message_at", datetime.now().isoformat()),
                 "message_count": metadata.get("message_count", 0)
@@ -1116,7 +1116,7 @@ class SessionManager:
                 if not metadata:  # If fetch fails, use original data as fallback
                     metadata = session.state.get('metadata', {}) if session.state else {}
                 
-                title = metadata.get("title", "未命名")
+                title = metadata.get("title", "Untitled")
                     
                 sessions_data.append({
                     "id": session.id,

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Terminal, CheckCircle, AlertCircle, Clock, Wrench, ChevronDown, ChevronUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { JsonDisplay } from './JsonDisplay';
+import { useTranslation } from '../hooks/useTranslation';
 
 interface ToolResultDisplayProps {
   toolName: string;
@@ -18,6 +19,7 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({
   args,
   isLongRunning = false
 }) => {
+  const { t } = useTranslation();
   const [isExpanded, setIsExpanded] = useState(false);
   const [isArgsExpanded, setIsArgsExpanded] = useState(false);
   // 解析结果内容，处理特殊格式
@@ -65,14 +67,14 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({
   const getStatusText = () => {
     switch (status) {
       case 'completed':
-        return '执行完成';
+        return t.tool.completed;
       case 'failed':
-        return '执行失败';
+        return t.tool.failed;
       case 'running':
       case 'executing':
-        return isLongRunning ? '正在执行（长时间运行）' : '正在执行';
+        return isLongRunning ? `${t.tool.executing}${t.tool.longRunning}` : t.tool.executing;
       default:
-        return '准备执行';
+        return t.tool.preparing;
     }
   };
 
@@ -126,8 +128,8 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({
             className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors text-gray-600 dark:text-gray-400"
             title={
               status === 'completed' 
-                ? (isExpanded ? '收起结果' : '展开结果')
-                : (isArgsExpanded ? '收起参数' : '展开参数')
+                ? (isExpanded ? t.tool.collapseResults : t.tool.expandResults)
+                : (isArgsExpanded ? t.tool.collapseParams : t.tool.expandParams)
             }
           >
             {(status === 'completed' ? isExpanded : isArgsExpanded) ? (
@@ -160,7 +162,7 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({
               className="overflow-hidden"
             >
               <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
-                <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">调用参数:</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">{t.tool.callParams}</div>
                 <div className="bg-white dark:bg-gray-800 rounded-md p-3 shadow-inner">
                   <JsonDisplay data={args} />
                 </div>
@@ -194,11 +196,11 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({
               {/* 如果有参数，在结果中也展示 */}
               {args && (
                 <>
-                  <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">调用参数:</div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">{t.tool.callParams}</div>
                   <div className="bg-white dark:bg-gray-800 rounded-md p-2 shadow-inner mb-3">
                     <JsonDisplay data={args} />
                   </div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">执行结果:</div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">{t.tool.executionResult}</div>
                 </>
               )}
               <div className="bg-white dark:bg-gray-800 rounded-md p-3 shadow-inner">
@@ -231,7 +233,7 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({
               />
             </div>
             <span className="text-sm text-gray-600 dark:text-gray-400">
-              工具正在执行中...
+              {t.tool.toolExecuting}
             </span>
           </div>
         </div>

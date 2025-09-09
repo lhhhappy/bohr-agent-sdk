@@ -1,6 +1,7 @@
 import React from 'react'
 import { Plus, MessageSquare, Trash2, Clock } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { useTranslation } from '../hooks/useTranslation'
 
 interface Session {
   id: string
@@ -25,6 +26,7 @@ const SessionList: React.FC<SessionListProps> = ({
   onSelectSession,
   onDeleteSession
 }) => {
+  const { t, language } = useTranslation()
   const formatDate = (dateString: string) => {
     const date = new Date(dateString)
     const now = new Date()
@@ -33,12 +35,12 @@ const SessionList: React.FC<SessionListProps> = ({
     const diffHours = Math.floor(diffMs / 3600000)
     const diffDays = Math.floor(diffMs / 86400000)
 
-    if (diffMins < 1) return '刚刚'
-    if (diffMins < 60) return `${diffMins}分钟前`
-    if (diffHours < 24) return `${diffHours}小时前`
-    if (diffDays < 7) return `${diffDays}天前`
+    if (diffMins < 1) return t.session.justNow
+    if (diffMins < 60) return `${diffMins} ${t.session.minutesAgo}`
+    if (diffHours < 24) return `${diffHours} ${t.session.hoursAgo}`
+    if (diffDays < 7) return `${diffDays} ${t.session.daysAgo}`
     
-    return date.toLocaleDateString('zh-CN')
+    return date.toLocaleDateString(language === 'zh' ? 'zh-CN' : 'en-US')
   }
 
   return (
@@ -50,7 +52,7 @@ const SessionList: React.FC<SessionListProps> = ({
           className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white rounded-lg font-medium transition-all duration-200 shadow-sm hover:shadow-md"
         >
           <Plus className="w-5 h-5" />
-          <span>新建对话</span>
+          <span>{t.actions.newSession}</span>
         </button>
       </div>
 
@@ -60,8 +62,8 @@ const SessionList: React.FC<SessionListProps> = ({
           {sessions.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-gray-500 dark:text-gray-400">
               <MessageSquare className="w-12 h-12 mb-3 opacity-50" />
-              <p className="text-sm">暂无对话</p>
-              <p className="text-xs mt-1">点击上方按钮开始</p>
+              <p className="text-sm">{t.session.noSessions}</p>
+              <p className="text-xs mt-1">{t.session.clickToStart}</p>
             </div>
           ) : (
             sessions.map((session) => (
@@ -90,7 +92,7 @@ const SessionList: React.FC<SessionListProps> = ({
                           ? 'text-gray-900 dark:text-gray-100'
                           : 'text-gray-700 dark:text-gray-300'
                       }`}>
-                        {session.title}
+                        {session.title === 'Untitled' ? t.session.untitled : session.title}
                       </h3>
                       <div className="flex items-center gap-2 mt-1">
                         <Clock className="w-3 h-3 text-gray-400" />
@@ -98,7 +100,7 @@ const SessionList: React.FC<SessionListProps> = ({
                           {formatDate(session.last_message_at)}
                         </span>
                         <span className="text-xs text-gray-400 dark:text-gray-500">
-                          · {session.message_count} 消息
+                          · {session.message_count} {t.session.messages}
                         </span>
                       </div>
                     </div>
@@ -109,7 +111,7 @@ const SessionList: React.FC<SessionListProps> = ({
                 <button
                   onClick={(e) => {
                     e.stopPropagation()
-                    if (confirm('确定要删除这个对话吗？')) {
+                    if (confirm(t.session.deleteConfirm)) {
                       onDeleteSession(session.id)
                     }
                   }}
@@ -123,12 +125,6 @@ const SessionList: React.FC<SessionListProps> = ({
         </AnimatePresence>
       </div>
 
-      {/* Footer */}
-      <div className="p-3 border-t border-gray-200 dark:border-gray-700">
-        <p className="text-xs text-center text-gray-500 dark:text-gray-400">
-          会话仅在本次运行中保存
-        </p>
-      </div>
     </div>
   )
 }
