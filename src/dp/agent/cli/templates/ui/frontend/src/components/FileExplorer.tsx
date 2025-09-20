@@ -48,8 +48,8 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
   const [fileContentCache, setFileContentCache] = useState<Map<string, string | { type: 'image' | 'molecule' | 'html'; url?: string; content?: string }>>(new Map())
   const [isFileContentExpanded, setIsFileContentExpanded] = useState(false)
   const [copiedCode, setCopiedCode] = useState<string | null>(null)
-  // 文件树宽度固定，不再需要调整
-  const fileTreeWidth = 280 // 固定宽度
+  // File tree width is fixed, no need to adjust anymore
+  const fileTreeWidth = 280 // Fixed width
 
   const toggleDirectory = useCallback(async (path: string) => {
     onFileTreeUpdate(fileTree.map(node => {

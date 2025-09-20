@@ -1,6 +1,5 @@
 # WebSocket endpoint handler
 import os
-import aiohttp
 from fastapi import WebSocket
 from fastapi.websockets import WebSocketDisconnect
 

@@ -19,15 +19,15 @@ from server.connection import ConnectionContext
 from server.user_files import UserFileManager
 from config.agent_config import agentconfig
 
-# 配置日志输出到文件
-# 使用相对于项目根目录的路径或环境变量配置
+# Configure logging output to file
+# Use relative path to project root or environment variable configuration
 log_file_path = os.environ.get('WEBSOCKET_LOG_PATH', './websocket.log')
 logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.FileHandler(log_file_path, encoding='utf-8'),
-        logging.StreamHandler()  # 同时输出到控制台
+        logging.StreamHandler()  # Also output to console
     ]
 )
 logger = logging.getLogger(__name__)
@@ -76,7 +76,7 @@ class SessionManager:
         # Runner cache
         self.runners: Dict[str, Runner] = {}
         
-        # Runner错误缓存
+        # Runner error cache
         self._runner_errors: Dict[str, str] = {}
         
     def _create_session_service(self, user_identifier: str, is_registered: bool):
@@ -146,7 +146,7 @@ class SessionManager:
         context = self.active_connections[websocket]
         user_identifier = context.get_user_identifier()
         
-        # 标记连接为已断开，防止后续操作
+        # Mark connection as disconnected to prevent further operations
         context.is_connected = False
         
         # Clean up SessionService
@@ -158,7 +158,7 @@ class SessionManager:
             if key.startswith(f"{user_identifier}_"):
                 del self.runners[key]
         
-        # 清理相关的错误缓存
+        # Clean up related error cache
         for key in list(self._runner_errors.keys()):
             if key.startswith(f"{user_identifier}_"):
                 del self._runner_errors[key]
@@ -284,7 +284,7 @@ class SessionManager:
         return True
         
     async def process_message(self, context: ConnectionContext, message: str, attachments: list = None):
-        # 保存context引用以供URL生成使用
+        # Save context reference for URL generation
         self.current_context = context
         """
         Process user message

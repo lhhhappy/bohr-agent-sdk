@@ -84,22 +84,22 @@ const ChatInterface: React.FC = () => {
   }, [config])
 
   useEffect(() => {
-    // 只有当有消息且不是初始加载时才滚动
+    // Only scroll when there are messages and not initial load
     if (messages.length > 0 && !isInitialLoad.current) {
       scrollToBottom()
     }
-    // 标记初始加载已完成
+    // Mark initial load as completed
     if (isInitialLoad.current) {
       isInitialLoad.current = false
     }
   }, [messages, isLoading])
 
-  // 延迟显示加载动画，避免闪烁
+  // Delay showing loading animation to avoid flickering
   useEffect(() => {
     if (isLoading) {
       loadingTimeoutRef.current = setTimeout(() => {
         setShowLoadingDelay(true)
-      }, 200) // 200ms 延迟
+      }, 200) // 200ms delay
     } else {
       if (loadingTimeoutRef.current) {
         clearTimeout(loadingTimeoutRef.current)
@@ -157,12 +157,12 @@ const ChatInterface: React.FC = () => {
       }
       
       setConnectionStatus('connecting')
-      // 动态获取 WebSocket URL，支持代理和远程访问
+      // Dynamically get WebSocket URL, supports proxy and remote access
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
       const host = window.location.hostname
       const port = window.location.port
       
-      // 如果是通过代理访问，使用当前页面的 host
+      // If accessing through proxy, use current page's host
       let wsUrl = `${protocol}//${host}`
       if (port) {
         wsUrl += `:${port}`
@@ -228,13 +228,13 @@ const ChatInterface: React.FC = () => {
   }, [loadFileTree])
 
   const scrollToBottom = () => {
-    // 使用setTimeout确保DOM更新后再滚动
+    // Use setTimeout to ensure DOM updates before scrolling
     setTimeout(() => {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-      // 备用方案：如果scrollIntoView不起作用，直接操作滚动容器
+      // Fallback: if scrollIntoView doesn't work, directly manipulate scroll container
       const scrollContainer = messagesEndRef.current?.parentElement?.parentElement
       if (scrollContainer) {
-        // 滚动到底部，但留出一点空间
+        // Scroll to bottom, but leave a little space
         const targetScroll = scrollContainer.scrollHeight - scrollContainer.clientHeight
         scrollContainer.scrollTo({
           top: targetScroll,
@@ -272,10 +272,10 @@ const ChatInterface: React.FC = () => {
   const handleCreateSession = useCallback(async () => {
     if (ws && connectionStatus === 'connected' && !isCreatingSession) {
       setIsCreatingSession(true)
-      // 清空当前消息
+      // Clear current messages
       setMessages([])
       ws.send(JSON.stringify({ type: 'create_session' }))
-      // 设置超时，避免永久等待
+      // Set timeout to avoid waiting forever
       setTimeout(() => {
         setIsCreatingSession(false)
       }, 3000)
@@ -356,7 +356,7 @@ const ChatInterface: React.FC = () => {
     setInput('')
     setIsLoading(true)
     
-    // 发送消息后立即滚动到底部
+    // Scroll to bottom immediately after sending message
     scrollToBottom()
 
     // Send message through WebSocket with attachments
@@ -385,7 +385,7 @@ const ChatInterface: React.FC = () => {
   const handleWebSocketMessage = useCallback((data: WSMessage) => {
     const { type, timestamp, id } = data
     
-    // 如果消息有ID，检查是否已经处理过
+    // If message has ID, check if it has been processed
     if (id && messageIdef.current.has(id)) {
       return
     }
@@ -407,7 +407,7 @@ const ChatInterface: React.FC = () => {
       const messages = (data as any).messages || []
       console.log('Loading session messages:', messages)
       const processedMessages = messages.map((msg: any) => {
-        // 确定消息角色：优先使用 role 字段，如果没有则使用 type 字段
+        // Determine message role: prioritize role field, use type field if not available
         let role = msg.role || msg.type
         
         // 确保 tool 类型的消息正确标记
@@ -420,7 +420,7 @@ const ChatInterface: React.FC = () => {
           role: role,
           content: msg.content || '',
           timestamp: new Date(msg.timestamp),
-          // 保留工具相关字段
+          // Preserve tool-related fields
           tool_name: msg.tool_name,
           tool_status: msg.tool_status
         }
@@ -428,7 +428,7 @@ const ChatInterface: React.FC = () => {
         return processed
       })
       setMessages(processedMessages)
-      // 清除消息ID缓存，避免重复
+      // Clear message ID cache to avoid duplicates
       messageIdef.current.clear()
       messages.forEach((msg: any) => {
         if (msg.id) {
@@ -448,10 +448,10 @@ const ChatInterface: React.FC = () => {
       // Tool execution status
       const { tool_name, status } = data
       const result = 'result' in data ? (data as any).result : undefined
-      const args = 'args' in data ? (data as any).args : undefined  // 获取工具调用参数
+      const args = 'args' in data ? (data as any).args : undefined  // Get tool call parameters
       const content = result || ''
       
-      console.log('收到工具消息:', { tool_name, status, hasResult: !!result, hasArgs: !!args })
+      console.log('Received tool message:', { tool_name, status, hasResult: !!result, hasArgs: !!args })
       
       const toolId = `tool-${currentSessionId}-${tool_name}`
       
@@ -462,23 +462,23 @@ const ChatInterface: React.FC = () => {
         timestamp: new Date(timestamp || Date.now()),
         tool_name,
         tool_status: status,
-        tool_args: args  // 保存工具调用参数
+        tool_args: args  // Save tool call parameters
       }
       
       setMessages(prev => {
         const existingIndex = prev.findIndex(m => m.id === toolId)
         if (existingIndex >= 0) {
-          // 更新现有消息，保留之前的 tool_args
+          // Update existing message, preserve previous tool_args
           const updated = [...prev]
           updated[existingIndex] = {
             ...updated[existingIndex],
             ...toolMessage,
-            // 保留之前的 tool_args（如果新消息没有 args）
+            // Preserve previous tool_args (if new message doesn't have args)
             tool_args: args || updated[existingIndex].tool_args
           }
           return updated
         } else {
-          // 添加新消息
+          // Add new message
           return [...prev, toolMessage]
         }
       })
@@ -494,21 +494,21 @@ const ChatInterface: React.FC = () => {
         timestamp: new Date(timestamp || Date.now())
       }
       
-      // 使用函数式更新来避免消息重复
+      // Use functional update to avoid message duplication
       setMessages(prev => {
-        // 检查是否已经存在相同ID的消息
+        // Check if message with same ID already exists
         if (prev.some(m => m.id === assistantMessage.id)) {
           return prev
         }
         return [...prev, assistantMessage]
       })
-      // 收到新消息后滚动到底部
+      // Scroll to bottom after receiving new message
       scrollToBottom()
     }
     
     if (type === 'complete') {
       setIsLoading(false)
-      // 加载完成后滚动到底部
+      // Scroll to bottom after loading completes
       scrollToBottom()
     }
     
@@ -581,7 +581,7 @@ const ChatInterface: React.FC = () => {
                 </label>
                 {loadingProjects ? (
                   <div className="px-3 py-1.5 text-sm text-gray-500 dark:text-gray-400">
-                    正在获取项目列表...
+                    Loading project list...
                   </div>
                 ) : projects.length > 0 ? (
                   <select
@@ -613,14 +613,14 @@ const ChatInterface: React.FC = () => {
                       disabled
                       className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 w-64 cursor-not-allowed"
                     >
-                      <option value="">{projectsError || "无法获取项目列表"}</option>
+                      <option value="">{projectsError || "Cannot get project list"}</option>
                     </select>
                     {projectsError && (
                       <button
                         onClick={loadProjects}
                         className="px-3 py-1.5 text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium"
                       >
-                        重试
+                        Retry
                       </button>
                     )}
                   </div>
@@ -636,7 +636,7 @@ const ChatInterface: React.FC = () => {
                     className="px-4 py-1.5 text-sm font-medium text-white bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 rounded-lg shadow-md hover:shadow-lg transition-all duration-200"
                   >
                     <span className="flex items-center gap-1">
-                      确认
+                      Confirm
                       <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                       </svg>
@@ -662,7 +662,7 @@ const ChatInterface: React.FC = () => {
                           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                         </svg>
                       </motion.div>
-                      正在更新...
+                      Updating...
                     </motion.span>
                   )}
                   {projectIdStatus === 'success' && (
@@ -684,7 +684,7 @@ const ChatInterface: React.FC = () => {
                       >
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                       </motion.svg>
-                      更新成功
+                      Update successful
                     </motion.span>
                   )}
                   {projectIdStatus === 'idle' && isProjectIdSet && projectId && (
@@ -714,7 +714,7 @@ const ChatInterface: React.FC = () => {
             <button
               onClick={() => setLanguage(language === 'zh' ? 'en' : 'zh')}
               className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors btn-animated"
-              title={language === 'zh' ? 'Switch to English' : '切换到中文'}
+              title={language === 'zh' ? 'Switch to English' : 'Switch to Chinese'}
             >
               <Globe className="w-4 h-4" />
               <span>{language === 'zh' ? 'EN' : 'CN'}</span>
@@ -742,7 +742,7 @@ const ChatInterface: React.FC = () => {
 
         {/* Messages Area */}
         <div className="flex-1 overflow-y-auto px-4 py-6 relative">
-          {/* Project ID 提示横幅 */}
+          {/* Project ID prompt banner */}
           {requireProjectId && !isProjectIdSet && (
             <div className="max-w-4xl mx-auto mb-4">
               <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
@@ -771,7 +771,7 @@ const ChatInterface: React.FC = () => {
                 <div className="text-center">
                   <Bot className="w-16 h-16 mx-auto mb-4 text-gray-300 dark:text-gray-600" />
                   <h3 className="text-lg font-medium text-gray-600 dark:text-gray-400 mb-2">
-                    欢迎使用 {config?.agent?.name || 'Agent'}
+                    Welcome to {config?.agent?.name || 'Agent'}
                   </h3>
                   <p className="text-sm text-gray-500 dark:text-gray-500">
                     {config?.agent?.welcomeMessage || 'welcome to chat with me'}
@@ -828,7 +828,7 @@ const ChatInterface: React.FC = () => {
               </MessageAnimation>
             )}
             
-            {/* 底部垫高，确保最后一条消息不贴底 */}
+            {/* Bottom padding to ensure last message doesn't stick to bottom */}
             <div className="h-24" />
             <div ref={messagesEndRef} />
           </div>
