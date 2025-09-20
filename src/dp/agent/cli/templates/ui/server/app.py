@@ -87,12 +87,12 @@ def create_app() -> FastAPI:
         # Define all other routes first, then mount static files last
         # This ensures API and WebSocket routes are matched first
         app.mount("/", StaticFiles(directory=str(static_dir), html=True), name="static")
-        print(f"📁 静态文件目录: {static_dir}")
+        print(f"📁 Static files directory: {static_dir}")
     else:
-        print(f"⚠️  静态文件目录不存在: {static_dir}")
+        print(f"⚠️  Static files directory does not exist: {static_dir}")
     
     # Print Agent config info
-    print(f"📂 Agent 配置: {agentconfig.config['agent']['module']}")
-    print("🛠️  Agent 将在用户连接时根据其 AK 动态创建")
+    print(f"📂 Agent configuration: {agentconfig.config['agent']['module']}")
+    print("🛠️  Agent will be dynamically created based on user AK when connecting")
     
     return app

@@ -11,21 +11,21 @@ from .files import user_file_manager
 
 
 async def get_user_file(request: Request, user_id: str, filename: str):
-    """获取特定用户的文件"""
+    """Get file for specific user"""
     try:
-        # 使用 user_id 直接获取用户文件目录
-        # UserFileManager 会根据 user_id 类型自动选择正确的路径
+        # Use user_id to directly get user file directory
+        # UserFileManager will automatically choose the correct path based on user_id type
         user_files_dir = user_file_manager.get_user_files_dir(user_id)
         file_path = user_files_dir / "output" / filename
         
-        # 安全检查
+        # Security check
         if not file_path.exists() or not file_path.is_file():
             return JSONResponse(
                 content={"error": "文件未找到"},
                 status_code=404
             )
         
-        # 验证文件确实在用户目录内
+        # Verify file is indeed within user directory
         try:
             file_path_resolved = file_path.resolve()
             user_dir_resolved = user_files_dir.resolve()
@@ -40,7 +40,7 @@ async def get_user_file(request: Request, user_id: str, filename: str):
                 status_code=400
             )
         
-        # 返回文件
+        # Return file
         return FileResponse(file_path)
         
     except Exception as e:

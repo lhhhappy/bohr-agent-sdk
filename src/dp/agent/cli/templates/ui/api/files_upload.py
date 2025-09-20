@@ -9,100 +9,75 @@ from server.utils import get_ak_info_from_request
 from server.user_files import UserFileManager
 from config.agent_config import agentconfig
 
-# 从 files.py 导入需要的函数和变量
-from .files import user_file_manager, get_user_identifier
+# Import required functions and variables from files.py
+from .files import user_file_manager
+from .utils import get_user_identifier, extract_session_id_from_request, check_project_id_required
+from .constants import MAX_FILE_SIZE, ALLOWED_EXTENSIONS
+from .messages import ERROR_MESSAGES, get_message
 
 
 async def upload_files(request: Request, files: List[UploadFile] = File(...)):
-    """上传文件到用户目录"""
+    """Upload files to user directory"""
     try:
-        # 获取用户身份
+        # Get user identity
         access_key, app_key = get_ak_info_from_request(request.headers)
         
-        # 获取 session_id (从 cookie)
-        session_id = None
-        cookie_header = request.headers.get("cookie", "")
-        if cookie_header:
-            from http.cookies import SimpleCookie
-            simple_cookie = SimpleCookie()
-            simple_cookie.load(cookie_header)
-            if "session_id" in simple_cookie:
-                session_id = simple_cookie["session_id"].value
+        # Get session_id (from cookie)
+        session_id = extract_session_id_from_request(request)
         
-        # 获取用户唯一标识符
+        # Get user unique identifier
         user_identifier = get_user_identifier(access_key, app_key, session_id)
         
-        # 检查用户是否已设置 project_id
+        # Check if user has set project_id
         from api.websocket import manager
-        import os
         
-        # 首先检查环境变量
-        has_project_id = bool(os.environ.get('BOHR_PROJECT_ID'))
+        has_project_id = await check_project_id_required(manager, user_identifier)
         
-        # 如果环境变量没有设置，检查用户的连接上下文
-        if not has_project_id:
-            # 遍历活动连接，查找当前用户
-            for context in manager.active_connections.values():
-                if context.get_user_identifier() == user_identifier:
-                    has_project_id = bool(context.project_id)
-                    break
-        
-        # 如果没有设置 project_id，拒绝上传
+        # If project_id not set, reject upload
         if not has_project_id:
             return JSONResponse(
                 content={
-                    "error": "请先设置项目 ID 后再上传文件。",
+                    "error": get_message(ERROR_MESSAGES['project_id_required']),
                     "code": "PROJECT_ID_REQUIRED"
                 },
                 status_code=403
             )
         
-        # 获取用户特定的文件目录
+        # Get user-specific file directory
         user_files_dir = user_file_manager.get_user_files_dir(user_identifier)
         output_dir = user_files_dir / "output"
         output_dir.mkdir(exist_ok=True)
         
-        # 文件大小限制 (10MB)
-        MAX_FILE_SIZE = 10 * 1024 * 1024
-        
-        # 允许的文件扩展名
-        ALLOWED_EXTENSIONS = {
-            'txt', 'pdf', 'csv', 'json', 'xml', 
-            'png', 'jpg', 'jpeg', 'gif', 'svg', 
-            'py', 'js', 'ts', 'java', 'cpp', 'c',
-            'md', 'rst', 'yaml', 'yml', 'log',
-            'html', 'htm', 'css', 'scss',
-            'sh', 'bash', 'sql', 'toml'
-        }
+        # File limits are now imported from constants
         
         uploaded_files = []
         
         for file in files:
-            # 验证文件扩展名
+            # Verify file extension
             file_ext = file.filename.split('.')[-1].lower() if '.' in file.filename else ''
             if file_ext not in ALLOWED_EXTENSIONS:
                 return JSONResponse(
-                    content={"error": f"不支持的文件类型: {file_ext}"},
+                    content={"error": get_message(ERROR_MESSAGES['unsupported_file_type']).format(file_ext=file_ext)},
                     status_code=400
                 )
             
-            # 读取文件内容
+            # Read file content
             content = await file.read()
             
-            # 验证文件大小
+            # Verify file size
             if len(content) > MAX_FILE_SIZE:
                 return JSONResponse(
-                    content={"error": f"文件 {file.filename} 超过大小限制 (10MB)"},
+                    content={"error": get_message(ERROR_MESSAGES['file_too_large']).format(filename=file.filename)},
                     status_code=400
                 )
             
-            # 生成安全的文件名
+            # Generate safe filename
             safe_filename = file.filename.replace('/', '_').replace('\\', '_')
             
-            # 处理文件名冲突
+            # Handle filename conflicts
             file_path = output_dir / safe_filename
             if file_path.exists():
-                # 添加时间戳避免覆盖
+                # Add timestamp to avoid overwriting
                 name_parts = safe_filename.rsplit('.', 1)
                 if len(name_parts) == 2:
                     safe_filename = f"{name_parts[0]}_{uuid.uuid4().hex[:8]}.{name_parts[1]}"
@@ -110,13 +85,13 @@ async def upload_files(request: Request, files: List[UploadFile] = File(...)):
                     safe_filename = f"{safe_filename}_{uuid.uuid4().hex[:8]}"
                 file_path = output_dir / safe_filename
             
-            # 保存文件
+            # Save file
             file_path.write_bytes(content)
             
-            # 生成相对路径（相对于 user_files_dir）
+            # Generate relative path (relative to user_files_dir)
             relative_path = file_path.relative_to(user_files_dir)
             
-            # 添加到返回列表
+            # Add to return list
             uploaded_files.append({
                 "name": file.filename,
                 "saved_name": safe_filename,

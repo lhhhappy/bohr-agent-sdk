@@ -224,12 +224,12 @@ async def get_file_content(request: Request, file_path: str):
 
 
 async def download_file(request: Request, file_path: str):
-    """下载单个文件"""
+    """Download a single file"""
     try:
-        # 获取用户身份
+        # Get user identity
         access_key, app_key = get_ak_info_from_request(request.headers)
         
-        # 获取 session_id (从 cookie)
+        # Get session_id (from cookie)
         session_id = None
         cookie_header = request.headers.get("cookie", "")
         if cookie_header:
@@ -239,20 +239,20 @@ async def download_file(request: Request, file_path: str):
             if "session_id" in simple_cookie:
                 session_id = simple_cookie["session_id"].value
         
-        # 获取用户唯一标识符
+        # Get user unique identifier
         user_identifier = get_user_identifier(access_key, app_key, session_id)
         
-        # 获取用户特定的文件目录
+        # Get user-specific file directory
         user_files_dir = user_file_manager.get_user_files_dir(user_identifier)
         
-        # 处理文件路径
+        # Process file path
         if file_path.startswith('/'):
             file = Path(file_path)
         else:
-            # 相对路径，基于用户目录
+            # Relative path, based on user directory
             file = user_files_dir / file_path
         
-        # 安全检查：确保文件在用户目录内
+        # Security check: ensure file is within user directory
         try:
             file_resolved = file.resolve()
             user_files_dir_resolved = user_files_dir.resolve()
@@ -273,10 +273,10 @@ async def download_file(request: Request, file_path: str):
                 status_code=404
             )
         
-        # 获取文件名
+        # Get filename
         filename = file.name
         
-        # 返回文件响应，设置下载头
+        # Return file response with download headers
         return FileResponse(
             path=file,
             filename=filename,
@@ -291,12 +291,12 @@ async def download_file(request: Request, file_path: str):
 
 
 async def download_folder(request: Request, folder_path: str):
-    """下载文件夹（打包为 zip）"""
+    """Download folder (packaged as zip)"""
     try:
-        # 获取用户身份
+        # Get user identity
         access_key, app_key = get_ak_info_from_request(request.headers)
         
-        # 获取 session_id (从 cookie)
+        # Get session_id (from cookie)
         session_id = None
         cookie_header = request.headers.get("cookie", "")
         if cookie_header:
@@ -306,20 +306,20 @@ async def download_folder(request: Request, folder_path: str):
             if "session_id" in simple_cookie:
                 session_id = simple_cookie["session_id"].value
         
-        # 获取用户唯一标识符
+        # Get user unique identifier
         user_identifier = get_user_identifier(access_key, app_key, session_id)
         
-        # 获取用户特定的文件目录
+        # Get user-specific file directory
         user_files_dir = user_file_manager.get_user_files_dir(user_identifier)
         
-        # 处理文件夹路径
+        # Process folder path
         if folder_path.startswith('/'):
             folder = Path(folder_path)
         else:
-            # 相对路径，基于用户目录
+            # Relative path, based on user directory
             folder = user_files_dir / folder_path
         
-        # 安全检查：确保文件夹在用户目录内
+        # Security check: ensure folder is within user directory
         try:
             folder_resolved = folder.resolve()
             user_files_dir_resolved = user_files_dir.resolve()
@@ -340,16 +340,16 @@ async def download_folder(request: Request, folder_path: str):
                 status_code=404
             )
         
-        # 创建临时 zip 文件
+        # Create temporary zip file
         temp_dir = Path(tempfile.gettempdir())
         zip_filename = f"{folder.name}_{uuid.uuid4().hex[:8]}.zip"
         zip_path = temp_dir / zip_filename
         
         try:
-            # 创建 zip 文件
+            # Create zip file
             with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
                 for root, dirs, files in os.walk(folder):
-                    # 跳过隐藏文件和目录
+                    # Skip hidden files and directories
                     dirs[:] = [d for d in dirs if not d.startswith('.')]
                     
                     for file in files:
@@ -357,27 +357,27 @@ async def download_folder(request: Request, folder_path: str):
                             continue
                             
                         file_path = Path(root) / file
-                        # 计算相对路径
+                        # Calculate relative path
                         arcname = file_path.relative_to(folder)
                         zipf.write(file_path, arcname=str(arcname))
             
-            # 返回 zip 文件
+            # Return zip file
             def cleanup():
-                """清理临时文件"""
+                """Clean up temporary file"""
                 try:
                     if zip_path.exists():
                         zip_path.unlink()
                 except:
                     pass
             
-            # 读取文件内容
+            # Read file content
             with open(zip_path, 'rb') as f:
                 content = f.read()
             
-            # 清理临时文件
+            # Clean up temporary file
             cleanup()
             
-            # 返回响应
+            # Return response
             return Response(
                 content=content,
                 media_type='application/zip',
@@ -387,7 +387,7 @@ async def download_folder(request: Request, folder_path: str):
             )
             
         except Exception as e:
-            # 确保清理临时文件
+            # Ensure temporary file cleanup
             if zip_path.exists():
                 zip_path.unlink()
             raise e
@@ -400,12 +400,12 @@ async def download_folder(request: Request, folder_path: str):
 
 
 async def delete_file(request: Request, file_path: str):
-    """删除文件或文件夹"""
+    """Delete file or folder"""
     try:
-        # 获取用户身份
+        # Get user identity
         access_key, app_key = get_ak_info_from_request(request.headers)
         
-        # 获取 session_id (从 cookie)
+        # Get session_id (from cookie)
         session_id = None
         cookie_header = request.headers.get("cookie", "")
         if cookie_header:
@@ -415,20 +415,20 @@ async def delete_file(request: Request, file_path: str):
             if "session_id" in simple_cookie:
                 session_id = simple_cookie["session_id"].value
         
-        # 获取用户唯一标识符
+        # Get user unique identifier
         user_identifier = get_user_identifier(access_key, app_key, session_id)
         
-        # 获取用户特定的文件目录
+        # Get user-specific file directory
         user_files_dir = user_file_manager.get_user_files_dir(user_identifier)
         
-        # 处理文件路径
+        # Process file path
         if file_path.startswith('/'):
             target_path = Path(file_path)
         else:
-            # 相对路径，基于用户目录
+            # Relative path, based on user directory
             target_path = user_files_dir / file_path
         
-        # 安全检查：确保文件在用户目录内
+        # Security check: ensure file is within user directory
         try:
             target_path_resolved = target_path.resolve()
             user_files_dir_resolved = user_files_dir.resolve()
@@ -443,18 +443,18 @@ async def delete_file(request: Request, file_path: str):
                 status_code=400
             )
         
-        # 检查文件是否存在
+        # Check if file exists
         if not target_path.exists():
             return JSONResponse(
                 content={"error": "文件或文件夹不存在"},
                 status_code=404
             )
         
-        # 删除文件或文件夹
+        # Delete file or folder
         if target_path.is_file():
             target_path.unlink()
         else:
-            # 递归删除文件夹
+            # Recursively delete folder
             shutil.rmtree(target_path)
         
         return JSONResponse({

@@ -2,7 +2,6 @@
 Debug API endpoints for troubleshooting
 """
 import os
-import json
 from fastapi import HTTPException
 from fastapi.responses import JSONResponse
 from config.agent_config import agentconfig
@@ -10,12 +9,12 @@ from api.websocket import manager
 
 async def get_runner_status():
     """
-    获取所有 Runner 的状态
+    Get status of all runners
     """
     try:
         runner_status = {}
         
-        # 获取所有 Runner 的状态
+        # Get status of all runners
         for runner_key, runner in manager.runners.items():
             runner_status[runner_key] = {
                 "exists": True,
@@ -23,7 +22,7 @@ async def get_runner_status():
                 "created": True
             }
         
-        # 获取所有 Runner 错误
+        # Get all runner errors
         runner_errors = getattr(manager, '_runner_errors', {})
         for error_key, error_msg in runner_errors.items():
             runner_status[error_key] = {
@@ -47,15 +46,15 @@ async def get_runner_status():
 
 async def get_config_status():
     """
-    获取配置状态
+    Get configuration status
     """
     try:
         config = agentconfig.config
         
-        # 获取 Agent 配置
+        # Get agent configuration
         agent_config = config.get("agent", {})
         
-        # 测试 Agent 是否可以加载
+        # Test if agent can be loaded
         test_result = {
             "can_load": False,
             "error": None,
@@ -63,7 +62,7 @@ async def get_config_status():
         }
         
         try:
-            # 尝试加载 Agent（不传递参数）
+            # Try to load agent (without parameters)
             test_agent = agentconfig.get_agent()
             test_result["can_load"] = True
             test_result["agent_type"] = type(test_agent).__name__
@@ -94,12 +93,12 @@ async def get_config_status():
 
 async def get_session_status():
     """
-    获取会话状态
+    Get session status
     """
     try:
         session_info = {}
         
-        # 获取每个用户的会话信息
+        # Get session information for each user
         for user_id, session_service in manager.session_services.items():
             try:
                 response = await session_service.list_sessions(
@@ -113,7 +112,7 @@ async def get_session_status():
                         {
                             "id": s.id,
                             "state": s.state if hasattr(s, 'state') else {}
-                        } for s in sessions[:3]  # 只显示前3个
+                        } for s in sessions[:3]  # Only show first 3
                     ]
                 }
             except Exception as e:
@@ -143,14 +142,14 @@ async def get_session_status():
 
 async def test_agent_creation():
     """
-    测试 Agent 创建过程
+    Test agent creation process
     """
     try:
         steps = []
         
-        # Step 1: 加载配置
+        # Step 1: Load configuration
         steps.append({
-            "step": "加载配置",
+            "step": "Load configuration",
             "success": True,
             "details": {
                 "config_path": str(agentconfig.config_path),
@@ -158,11 +157,11 @@ async def test_agent_creation():
             }
         })
         
-        # Step 2: 创建 Agent（不带参数）
+        # Step 2: Create agent (without parameters)
         try:
             agent = agentconfig.get_agent()
             steps.append({
-                "step": "创建 Agent (无参数)",
+                "step": "Create agent (no parameters)",
                 "success": True,
                 "details": {
                     "agent_type": type(agent).__name__,
@@ -171,12 +170,12 @@ async def test_agent_creation():
             })
         except Exception as e:
             steps.append({
-                "step": "创建 Agent (无参数)",
+                "step": "Create agent (no parameters)",
                 "success": False,
                 "error": str(e)
             })
             
-        # Step 3: 创建 Agent（带 project_id）
+        # Step 3: Create agent (with project_id)
         try:
             project_id = os.environ.get('BOHR_PROJECT_ID')
             if project_id:
@@ -186,7 +185,7 @@ async def test_agent_creation():
                     project_id=int(project_id)
                 )
                 steps.append({
-                    "step": f"创建 Agent (project_id={project_id})",
+                    "step": f"Create agent (project_id={project_id})",
                     "success": True,
                     "details": {
                         "agent_type": type(agent_with_project).__name__
@@ -199,12 +198,12 @@ async def test_agent_creation():
                 "error": str(e)
             })
         
-        # Step 4: 检查 SessionService
+        # Step 4: Check SessionService
         try:
             from google.adk.sessions import InMemorySessionService
             test_service = InMemorySessionService()
             steps.append({
-                "step": "创建 SessionService",
+                "step": "Create SessionService",
                 "success": True,
                 "details": {
                     "service_type": type(test_service).__name__
@@ -212,12 +211,12 @@ async def test_agent_creation():
             })
         except Exception as e:
             steps.append({
-                "step": "创建 SessionService",
+                "step": "Create SessionService",
                 "success": False,
                 "error": str(e)
             })
         
-        # Step 5: 创建 Runner
+        # Step 5: Create Runner
         try:
             from google.adk import Runner
             if 'agent' in locals() and 'test_service' in locals():
@@ -227,7 +226,7 @@ async def test_agent_creation():
                     app_name="TestApp"
                 )
                 steps.append({
-                    "step": "创建 Runner",
+                    "step": "Create Runner",
                     "success": True,
                     "details": {
                         "runner_type": type(test_runner).__name__
