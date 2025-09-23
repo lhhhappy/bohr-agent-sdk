@@ -57,7 +57,7 @@ dp-agent run tool calculation
 ### Run Agent
 
 ```bash
-dp-agent run agent
+dp-agent run agent --config config.json
 ```
 
 ### Debug Cloud Environment

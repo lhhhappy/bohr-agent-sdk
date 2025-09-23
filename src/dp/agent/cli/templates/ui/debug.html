@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agent 调试面板</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: white;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .debug-section {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .debug-section h2 {
+            margin-top: 0;
+            color: #4a5568;
+            border-bottom: 2px solid #e2e8f0;
+            padding-bottom: 10px;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+        .status-success {
+            background: #10b981;
+            color: white;
+        }
+        .status-error {
+            background: #ef4444;
+            color: white;
+        }
+        .status-warning {
+            background: #f59e0b;
+            color: white;
+        }
+        pre {
+            background: #f3f4f6;
+            padding: 15px;
+            border-radius: 8px;
+            overflow-x: auto;
+            border-left: 4px solid #6366f1;
+        }
+        .error-box {
+            background: #fee2e2;
+            border: 1px solid #fecaca;
+            color: #991b1b;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+        }
+        .success-box {
+            background: #dcfce7;
+            border: 1px solid #bbf7d0;
+            color: #166534;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+        }
+        button {
+            background: #6366f1;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-right: 10px;
+        }
+        button:hover {
+            background: #4f46e5;
+        }
+        .loading {
+            color: #6b7280;
+            font-style: italic;
+        }
+        .step-item {
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 6px;
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+        }
+        .step-success {
+            border-left: 4px solid #10b981;
+        }
+        .step-error {
+            border-left: 4px solid #ef4444;
+        }
+        .info-grid {
+            display: grid;
+            grid-template-columns: 200px 1fr;
+            gap: 10px;
+            margin: 10px 0;
+        }
+        .info-label {
+            font-weight: bold;
+            color: #4b5563;
+        }
+        .info-value {
+            color: #1f2937;
+            word-break: break-all;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Agent 调试面板</h1>
+        
+        <div class="debug-section">
+            <h2>配置状态 <span id="config-status" class="status-badge"></span></h2>
+            <button onclick="checkConfig()">刷新配置</button>
+            <div id="config-content" class="loading">加载中...</div>
+        </div>
+
+        <div class="debug-section">
+            <h2>Agent 创建测试 <span id="agent-status" class="status-badge"></span></h2>
+            <button onclick="testAgent()">测试 Agent</button>
+            <div id="agent-content" class="loading">点击按钮开始测试...</div>
+        </div>
+
+        <div class="debug-section">
+            <h2>Runner 状态 <span id="runner-status" class="status-badge"></span></h2>
+            <button onclick="checkRunners()">刷新状态</button>
+            <div id="runner-content" class="loading">加载中...</div>
+        </div>
+
+        <div class="debug-section">
+            <h2>会话状态 <span id="session-status" class="status-badge"></span></h2>
+            <button onclick="checkSessions()">刷新会话</button>
+            <div id="session-content" class="loading">加载中...</div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin;
+
+        async function checkConfig() {
+            const contentEl = document.getElementById('config-content');
+            const statusEl = document.getElementById('config-status');
+            
+            contentEl.innerHTML = '<div class="loading">正在检查配置...</div>';
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/debug/config`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    statusEl.className = 'status-badge status-success';
+                    statusEl.textContent = '正常';
+                    
+                    let html = '<div class="info-grid">';
+                    html += `<div class="info-label">配置文件:</div><div class="info-value">${data.config.config_path}</div>`;
+                    html += `<div class="info-label">文件存在:</div><div class="info-value">${data.config.config_exists ? '✅ 是' : '❌ 否'}</div>`;
+                    html += `<div class="info-label">Agent 名称:</div><div class="info-value">${data.config.agent_name || '未设置'}</div>`;
+                    html += `<div class="info-label">Agent 模块:</div><div class="info-value">${data.config.agent_module || '未设置'}</div>`;
+                    html += `<div class="info-label">Root Agent:</div><div class="info-value">${data.config.root_agent || '未设置'}</div>`;
+                    html += '</div>';
+                    
+                    if (data.test_result.can_load) {
+                        html += `<div class="success-box">✅ Agent 可以加载: ${data.test_result.agent_type}</div>`;
+                    } else {
+                        html += `<div class="error-box">❌ Agent 加载失败: ${data.test_result.error}</div>`;
+                    }
+                    
+                    html += '<h3>环境变量:</h3>';
+                    html += '<div class="info-grid">';
+                    html += `<div class="info-label">工作目录:</div><div class="info-value">${data.environment.user_working_dir}</div>`;
+                    html += `<div class="info-label">Project ID:</div><div class="info-value">${data.environment.bohr_project_id || '未设置'}</div>`;
+                    html += `<div class="info-label">配置路径:</div><div class="info-value">${data.environment.agent_config_path || '默认'}</div>`;
+                    html += '</div>';
+                    
+                    contentEl.innerHTML = html;
+                } else {
+                    statusEl.className = 'status-badge status-error';
+                    statusEl.textContent = '错误';
+                    contentEl.innerHTML = `<div class="error-box">错误: ${data.error}</div>`;
+                }
+            } catch (error) {
+                statusEl.className = 'status-badge status-error';
+                statusEl.textContent = '错误';
+                contentEl.innerHTML = `<div class="error-box">请求失败: ${error.message}</div>`;
+            }
+        }
+
+        async function testAgent() {
+            const contentEl = document.getElementById('agent-content');
+            const statusEl = document.getElementById('agent-status');
+            
+            contentEl.innerHTML = '<div class="loading">正在测试 Agent 创建...</div>';
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/debug/test-agent`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    statusEl.className = 'status-badge status-success';
+                    statusEl.textContent = '通过';
+                } else {
+                    statusEl.className = 'status-badge status-error';
+                    statusEl.textContent = '失败';
+                }
+                
+                let html = `<div>总步骤: ${data.summary.total_steps}, 成功: ${data.summary.successful}, 失败: ${data.summary.failed}</div>`;
+                
+                for (const step of data.steps) {
+                    const stepClass = step.success ? 'step-success' : 'step-error';
+                    html += `<div class="step-item ${stepClass}">`;
+                    html += `<strong>${step.step}</strong>`;
+                    if (step.success) {
+                        if (step.details) {
+                            html += '<ul>';
+                            for (const [key, value] of Object.entries(step.details)) {
+                                html += `<li>${key}: ${value}</li>`;
+                            }
+                            html += '</ul>';
+                        }
+                    } else {
+                        html += `<div class="error-box">${step.error}</div>`;
+                    }
+                    html += '</div>';
+                }
+                
+                contentEl.innerHTML = html;
+            } catch (error) {
+                statusEl.className = 'status-badge status-error';
+                statusEl.textContent = '错误';
+                contentEl.innerHTML = `<div class="error-box">请求失败: ${error.message}</div>`;
+            }
+        }
+
+        async function checkRunners() {
+            const contentEl = document.getElementById('runner-content');
+            const statusEl = document.getElementById('runner-status');
+            
+            contentEl.innerHTML = '<div class="loading">正在检查 Runner...</div>';
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/debug/runners`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    if (data.total_errors > 0) {
+                        statusEl.className = 'status-badge status-warning';
+                        statusEl.textContent = `${data.total_runners} 活跃, ${data.total_errors} 错误`;
+                    } else if (data.total_runners > 0) {
+                        statusEl.className = 'status-badge status-success';
+                        statusEl.textContent = `${data.total_runners} 活跃`;
+                    } else {
+                        statusEl.className = 'status-badge status-warning';
+                        statusEl.textContent = '无活跃';
+                    }
+                    
+                    let html = `<div>活跃连接: ${data.active_connections}</div>`;
+                    html += `<div>活跃 Runner: ${data.total_runners}</div>`;
+                    html += `<div>错误数量: ${data.total_errors}</div>`;
+                    
+                    if (Object.keys(data.runners).length > 0) {
+                        html += '<h3>Runner 详情:</h3>';
+                        for (const [key, runner] of Object.entries(data.runners)) {
+                            if (runner.exists) {
+                                html += `<div class="success-box">✅ ${key}: ${runner.type}</div>`;
+                            } else {
+                                html += `<div class="error-box">❌ ${key}: <pre>${runner.error}</pre></div>`;
+                            }
+                        }
+                    }
+                    
+                    contentEl.innerHTML = html;
+                } else {
+                    statusEl.className = 'status-badge status-error';
+                    statusEl.textContent = '错误';
+                    contentEl.innerHTML = `<div class="error-box">错误: ${data.error}</div>`;
+                }
+            } catch (error) {
+                statusEl.className = 'status-badge status-error';
+                statusEl.textContent = '错误';
+                contentEl.innerHTML = `<div class="error-box">请求失败: ${error.message}</div>`;
+            }
+        }
+
+        async function checkSessions() {
+            const contentEl = document.getElementById('session-content');
+            const statusEl = document.getElementById('session-status');
+            
+            contentEl.innerHTML = '<div class="loading">正在检查会话...</div>';
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/debug/sessions`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    statusEl.className = 'status-badge status-success';
+                    statusEl.textContent = `${data.users} 用户`;
+                    
+                    let html = `<div>用户数: ${data.users}</div>`;
+                    
+                    if (data.active_connections.length > 0) {
+                        html += '<h3>活跃连接:</h3>';
+                        for (const conn of data.active_connections) {
+                            html += '<div class="step-item">';
+                            html += `<div>用户: ${conn.user}</div>`;
+                            html += `<div>注册用户: ${conn.is_registered ? '是' : '否'}</div>`;
+                            html += `<div>Project ID: ${conn.project_id || '未设置'}</div>`;
+                            html += `<div>当前会话: ${conn.current_session || '无'}</div>`;
+                            html += '</div>';
+                        }
+                    }
+                    
+                    contentEl.innerHTML = html;
+                } else {
+                    statusEl.className = 'status-badge status-error';
+                    statusEl.textContent = '错误';
+                    contentEl.innerHTML = `<div class="error-box">错误: ${data.error}</div>`;
+                }
+            } catch (error) {
+                statusEl.className = 'status-badge status-error';
+                statusEl.textContent = '错误';
+                contentEl.innerHTML = `<div class="error-box">请求失败: ${error.message}</div>`;
+            }
+        }
+
+        // 页面加载时自动检查
+        window.onload = async () => {
+            await checkConfig();
+            await checkRunners();
+            await checkSessions();
+        };
+
+        // 定期刷新
+        setInterval(() => {
+            checkRunners();
+            checkSessions();
+        }, 10000); // 每10秒刷新一次
+    </script>
+</body>
+</html>
