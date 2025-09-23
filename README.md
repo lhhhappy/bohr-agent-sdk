@@ -232,10 +232,3 @@ The SDK provides real-time task status monitoring, supporting:
 
 - 📖 [Detailed Documentation](https://dptechnology.feishu.cn/wiki/ZSj9wbLJEiwdNek0Iu7cKsFanuW)
 
-## 🏢 About Us
-
-Bohrium Science Agent SDK is developed and maintained by DP Technology, dedicated to providing powerful AI-assisted tools for researchers to accelerate the process of scientific discovery.
-
----
-
-**© 2025 DP Technology. Empowering Scientific Innovation with AI.**
