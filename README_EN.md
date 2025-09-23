@@ -4,9 +4,7 @@
 
 ## 📖 Introduction
 
-Developing powerful, efficient, and user-friendly software applications is no easy task. Developers often need to learn numerous software development concepts from scratch, write frontend interfaces, deploy computing resources, manage tasks, and handle various administrative matters such as domain registration, qualification certification, platform filing, and promotional activities. The high barriers to entry, maintenance challenges, and lack of guidance significantly dampen developer enthusiasm.
-
-To address these challenges, the Bohrium platform introduces the **bohr-agent-sdk Scientific Agent Development Kit**, enabling AI systems to truly execute professional scientific tasks and helping developers quickly build their own specialized research agents. Through a three-step process — **Invoking MCP Tools, Orchestrating Agent Workflows, and Deploying Services** — any scientific software can be rapidly transformed into an AI assistant.
+The Bohrium platform introduces the **bohr-agent-sdk Scientific Agent Development Kit**, enabling AI systems to truly execute professional scientific tasks and helping developers quickly build their own specialized research agents. Through a three-step process — **Invoking MCP Tools, Orchestrating Agent Workflows, and Deploying Services** — any scientific software can be rapidly transformed into an AI assistant.
 
 ## ✨ Core Features
 
@@ -25,12 +23,22 @@ Based on the modern React framework, deploy fully-featured web applications with
 ## 🖼️ Interface Showcase
 
 ### Scientific Computing Master Console
+<div align="center">
+
 ![SCIMaster](image/SCIMaster.PNG)
+
 *Powerful scientific computing task management and monitoring platform*
 
+</div>
+
 ### Visual Interactive Interface
+<div align="center">
+
 ![UI](image/UI.png)
+
 *Modern web application interface providing intuitive user experience*
+
+</div>
 
 ## 🚀 Quick Start
 
