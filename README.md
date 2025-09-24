@@ -1,113 +1,114 @@
 # Bohrium Science Agent SDK
 
-这是DP Tech的Bohrium Science Agent SDK，提供了一个命令行工具dp-agent，用于管理科学计算任务。同时提供了Python SDK用于开发自定义的科学计算应用。
+[English](README.md) | [简体中文](README_CN.md)
 
-## 安装
+**Transform Scientific Software into AI Assistants — 3 Steps to Intelligent Transformation**
+
+## 📖 Introduction
+
+The Bohrium platform introduces the **bohr-agent-sdk Scientific Agent Development Kit**, enabling AI systems to truly execute professional scientific tasks and helping developers quickly build their own specialized research agents. Through a three-step process — **Invoking MCP Tools, Orchestrating Agent Workflows, and Deploying Services** — any scientific software can be rapidly transformed into an AI assistant.
+
+## ✨ Core Features
+
+### 🎯 Intelligent Task Management: Simplified Development, Standardized Output
+With a decorator pattern, just a few annotations can quickly transform scientific computing programs into MCP standard services. Built-in application templates turn scattered research code into standardized, reusable intelligent components.
+
+### 🔧 Multi-Backend Framework Support
+Supports mainstream Agent open frameworks including Google ADK, Langraph, and Camel, providing flexible choices for developers familiar with different technology stacks.
+
+### ☁️ Flexible Deployment: Local Development, Cloud Production
+Dual-mode architecture supports seamless transition between development and production. Local environments enable rapid iteration and feature validation, while Bohrium's cloud GPU clusters handle production-grade computing tasks. The SDK automatically manages the complete workflow of task scheduling, status monitoring, and result collection, with built-in file transfer mechanisms for handling large-scale data uploads and downloads. Developers focus on core algorithm implementation while infrastructure management is fully automated.
+
+### 🖼️ Visual Interactive Interface: Professional Presentation, Intuitive Operation
+Based on the modern React framework, deploy fully-featured web applications with one click. Built-in 3D molecular visualization engine supports multiple structure formats and rendering modes for interactive molecular structure display. Real-time data synchronization ensures instant computing status updates, while multi-session management supports parallel task processing. Integrated with enterprise-grade features including file management, project switching, and permission control. Transform command-line tools into professional visual applications, significantly enhancing user experience and tool usability.
+
+## 🖼️ Interface Showcase
+
+### Scientific Computing Master Console
+<div align="center">
+
+![SCIMaster](image/SCIMaster.PNG)
+
+*Powerful scientific computing task management and monitoring platform*
+
+</div>
+
+### Visual Interactive Interface
+<div align="center">
+
+![UI](image/UI.png)
+
+*Modern web application interface providing intuitive user experience*
+
+</div>
+
+## 🚀 Quick Start
+
+### Installation
 
 ```bash
 pip install bohr-agent-sdk -i https://pypi.org/simple --upgrade
 ```
 
-## CLI 使用方法
+### Build Your Research Agent in 3 Steps
 
-安装后，您可以使用以下命令：
-
-### 获取资源
+#### Step 1: Get Project Templates
 
 ```bash
-# 获取基础代码结构
-dp-agent fetch scaffolding --type=calculation/device
+# Get calculation project template
+dp-agent fetch scaffolding --type=calculation
 
-# 获取配置文件
+# Get device control project template
+dp-agent fetch scaffolding --type=device
+
+# Get configuration file
 dp-agent fetch config
 ```
 
-`fetch config` 命令会下载 .env 配置文件并替换部分动态变量，如 MQTT_DEVICE_ID。
-注意：出于安全考虑，此功能仅在内网环境可用。其他环境需要手动配置。
+#### Step 2: Develop Your Agent
 
-### 运行命令
-
-```bash
-# 运行实验环境
-dp-agent run tool device
-
-# 运行云环境
-dp-agent run tool cloud
-
-# 运行计算环境
-dp-agent run tool calculation
-
-# 运行代理
-dp-agent run agent --config config.json
-
-# 调试模式
-dp-agent run debug
-```
-
-## SDK 快速入门
-
-Bohrium Science Agent SDK 提供了两种主要的开发模式：实验室模式（Lab）和云模式（Cloud）。
-
-### 基础结构
-
-安装完成并运行 `dp-agent fetch scaffolding` 后，您将获得以下基础项目结构：
-
-```
-your-project/
-├── lab/                # 实验室模式相关代码
-│   ├── __init__.py
-│   └── tescan_device.py  # 设备控制示例
-├── cloud/              # 云模式相关代码
-│   └── __init__.py
-└── main.py            # 主程序入口
-```
-
-### 实验室模式开发
-
-实验室模式主要用于控制本地实验设备。以下是一个基于 Tescan 设备的示例：
+**Lab Mode Development Example**
 
 ```python
 from typing import Dict, TypedDict
 from dp.agent.device.device import Device, action, BaseParams, SuccessResult
 
 class TakePictureParams(BaseParams):
-    """拍照参数"""
-    horizontal_width: str
+    """Picture taking parameters"""
+    horizontal_width: str  # Image horizontal width
 
 class PictureData(TypedDict):
-    """照片数据"""
+    """Picture data structure"""
     image_id: str
 
 class PictureResult(SuccessResult):
-    """拍照结果"""
+    """Picture taking result"""
     data: PictureData
 
 class MyDevice(Device):
+    """Custom device class"""
     device_name = "my_device"
-    
+
     @action("take_picture")
     def take_picture(self, params: TakePictureParams) -> PictureResult:
-        """拍照动作
-        
-        Args:
-            params: 拍照参数
-                - horizontal_width: 图片水平宽度
+        """
+        Execute picture taking action
+
+        Through the @action decorator, automatically register this method as an MCP standard service
         """
         hw = params.get("horizontal_width", "default")
+        # Execute actual device control logic
         return PictureResult(
             message=f"Picture taken with {self.device_name}",
             data={"image_id": "image_123"}
         )
 ```
 
-### 云端开发
-
-云模式基于 MCP (Message Control Protocol) 实现，用于处理远程设备控制和任务调度。register_mcp_tools 通过 python 的自省和反射机制实现了设备控制的自动注册，无需重复实现操作定义。
-以下展示如何创建设备并注册到 MCP 服务器：
+**Cloud Mode Development Example**
 
 ```python
 """
-Example of using the bohr-agent-sdk cloud functionality.
+MCP protocol-based cloud device control example
 """
 import signal
 import sys
@@ -115,24 +116,25 @@ from dp.agent.cloud import mcp, get_mqtt_cloud_instance
 from dp.agent.device.device import TescanDevice, register_mcp_tools
 
 def signal_handler(sig, frame):
-    """Handle SIGINT signal to gracefully shutdown."""
+    """Graceful shutdown handling"""
     print("Shutting down...")
     get_mqtt_cloud_instance().stop()
     sys.exit(0)
 
 def main():
-    """Start the cloud services."""
+    """Start cloud services"""
     print("Starting Tescan Device Twin Cloud Services...")
-    
+
     # Register signal handler
     signal.signal(signal.SIGINT, signal_handler)
-    
+
     # Create device instance
     device = TescanDevice(mcp, device)
-    
-    # Register device tools
+
+    # Automatically register device tools to MCP server
+    # register_mcp_tools implements automatic registration through Python introspection
     register_mcp_tools(device)
-    
+
     # Start MCP server
     print("Starting MCP server...")
     mcp.run(transport="sse")
@@ -141,30 +143,92 @@ if __name__ == "__main__":
     main()
 ```
 
+#### Step 3: Run and Deploy
 
-### 配置说明
+```bash
+# Local lab environment
+dp-agent run tool device
 
-在 `.env` 文件中配置必要的环境变量：
+# Cloud computing environment
+dp-agent run tool cloud
+
+# Scientific calculation mode
+dp-agent run tool calculation
+
+# Start agent (with Web UI)
+dp-agent run agent --config
+
+# Debug mode
+dp-agent run debug
+```
+
+## 🏗️ Project Structure
+
+After running `dp-agent fetch scaffolding`, you'll get a standardized project structure:
 
 ```
+your-project/
+├── lab/                    # Lab mode
+│   ├── __init__.py
+│   └── tescan_device.py    # Device control implementation
+├── cloud/                  # Cloud mode
+│   ├── __init__.py
+│   └── mcp_server.py       # MCP service implementation
+├── calculation/            # Calculation mode
+│   └── __init__.py
+├── .env                    # Environment configuration
+└── main.py                 # Main program entry
+```
+
+## ⚙️ Configuration
+
+Configure necessary environment variables in the `.env` file:
+
+```bash
+# MQTT connection configuration
 MQTT_INSTANCE_ID=your_instance_id
 MQTT_ENDPOINT=your_endpoint
 MQTT_DEVICE_ID=your_device_id
 MQTT_GROUP_ID=your_group_id
 MQTT_AK=your_access_key
 MQTT_SK=your_secret_key
+
+# Computing resource configuration
+BOHRIUM_USERNAME=your_username
+BOHRIUM_PASSWORD=your_password
 ```
 
-### 主要功能
+Note: The `dp-agent fetch config` command automatically downloads configuration files and replaces dynamic variables (such as MQTT_DEVICE_ID). For security reasons, this feature is only available in internal network environments.
 
-- 设备控制接口（Lab模式）
-  - 设备初始化
-  - 命令执行
-  - 状态监控
-  
-- 云端任务处理（Cloud模式）
-  - 任务队列管理
-  - 计算资源调度
-  - 结果回传
+## 🎯 Application Scenarios
 
-更详细的API文档请参考代码中的注释。
+- **Materials Science Computing**: Molecular dynamics simulation, first-principles calculations
+- **Bioinformatics Analysis**: Gene sequence analysis, protein structure prediction
+- **Laboratory Equipment Control**: Intelligent control of research equipment such as electron microscopes and X-ray diffractometers
+- **Data Processing Workflows**: Automated data cleaning, analysis, and visualization
+- **Machine Learning Training**: Model training, hyperparameter optimization, result evaluation
+
+## 🔧 Advanced Features
+
+### File Management
+
+```bash
+# Upload files to cloud
+dp-agent artifact upload <path>
+
+# Download cloud files
+dp-agent artifact download <artifact_id>
+```
+
+### Task Monitoring
+
+The SDK provides real-time task status monitoring, supporting:
+- Task queue management
+- Computing resource scheduling
+- Automatic result collection
+- Exception handling and retry mechanisms
+
+## 📚 Documentation & Support
+
+- 📖 [Detailed Documentation](https://dptechnology.feishu.cn/wiki/ZSj9wbLJEiwdNek0Iu7cKsFanuW)
+
