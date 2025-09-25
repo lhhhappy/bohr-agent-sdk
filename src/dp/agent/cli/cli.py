@@ -188,7 +188,7 @@ def calculation():
 def agent(ui, config, port, module, agent_name, dev):
     """Run the science agent with optional UI interface."""
     if not ui:
-            click.echo("Starting agent in console mode...")
+        click.echo("Starting agent in console mode...")
         click.echo("Console mode not yet implemented.")
         return
     
