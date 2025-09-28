@@ -35,6 +35,7 @@ setup(
         "google-genai",          # Google AI SDK
         "google-generativeai",   # Google Generative AI
         "aiofiles",
+        "bohrium-open-sdk==0.1.5",
     ],
     # extras_require={
     #     "dev": [
