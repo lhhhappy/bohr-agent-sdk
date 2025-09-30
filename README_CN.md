@@ -201,6 +201,33 @@ BOHRIUM_PASSWORD=your_password
 
 注意：`dp-agent fetch config` 命令会自动下载配置文件并替换动态变量（如 MQTT_DEVICE_ID）。出于安全考虑，此功能仅在内网环境可用。
 
+## 🔒 鉴权配置
+
+对于私有运行或者开发环境调试，需要在环境变量中配置以下参数：
+
+- `BOHR_ACCESS_KEY`：需要在 [Bohrium 用户设置](https://www.bohrium.com/settings/user) 获取真实的 AK
+- `BOHR_APP_KEY`：可以设置任意值用于开发
+
+### Linux/macOS 环境：
+```bash
+export BOHR_ACCESS_KEY=your_real_ak_from_bohrium_settings
+export BOHR_APP_KEY=any_value_for_dev
+```
+
+### Windows 环境 (命令提示符)：
+```cmd
+set BOHR_ACCESS_KEY=your_real_ak_from_bohrium_settings
+set BOHR_APP_KEY=any_value_for_dev
+```
+
+### Windows 环境 (PowerShell)：
+```powershell
+$env:BOHR_ACCESS_KEY="your_real_ak_from_bohrium_settings"
+$env:BOHR_APP_KEY="any_value_for_dev"
+```
+
+对于部署在 Bohrium APP 的智能体，会自动从 Cookie 中获取鉴权参数。
+
 ## 🎯 应用场景
 
 - **材料科学计算**：分子动力学模拟、第一性原理计算

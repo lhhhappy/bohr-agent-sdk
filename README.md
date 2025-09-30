@@ -200,6 +200,33 @@ BOHRIUM_PASSWORD=your_password
 
 Note: The `dp-agent fetch config` command automatically downloads configuration files and replaces dynamic variables (such as MQTT_DEVICE_ID). For security reasons, this feature is only available in internal network environments.
 
+## 🔒 Authentication Configuration
+
+For private deployments or development environment debugging, you need to configure the following environment variables:
+
+- `BOHR_ACCESS_KEY`: Requires a real Access Key obtained from [Bohrium User Settings](https://www.bohrium.com/settings/user)
+- `BOHR_APP_KEY`: Can be set to any value for development
+
+### Linux/macOS:
+```bash
+export BOHR_ACCESS_KEY=your_real_ak_from_bohrium_settings
+export BOHR_APP_KEY=any_value_for_dev
+```
+
+### Windows (Command Prompt):
+```cmd
+set BOHR_ACCESS_KEY=your_real_ak_from_bohrium_settings
+set BOHR_APP_KEY=any_value_for_dev
+```
+
+### Windows (PowerShell):
+```powershell
+$env:BOHR_ACCESS_KEY="your_real_ak_from_bohrium_settings"
+$env:BOHR_APP_KEY="any_value_for_dev"
+```
+
+For agents deployed on Bohrium APP, authentication parameters will be automatically obtained from cookies.
+
 ## 🎯 Application Scenarios
 
 - **Materials Science Computing**: Molecular dynamics simulation, first-principles calculations
