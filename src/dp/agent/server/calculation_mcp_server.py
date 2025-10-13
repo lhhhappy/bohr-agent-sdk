@@ -6,17 +6,23 @@ from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse
-from typing import Literal, Optional, get_origin
+from typing import Any, Literal, Optional, TypedDict
 
+import mcp
 from mcp.server.fastmcp import FastMCP
-from mcp.server.fastmcp.server import Context
-from mcp.server.fastmcp.utilities.func_metadata import _get_typed_signature
+from mcp.server.fastmcp.utilities.context_injection import (
+    find_context_parameter,
+)
+from mcp.server.fastmcp.utilities.func_metadata import (
+    _get_typed_signature,
+    func_metadata,
+)
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
 from .executor import executor_dict
 from .storage import storage_dict
-from .utils import get_logger, get_metadata, convert_to_content, Tool
+from .utils import get_logger, JobResult, Tool
 logger = get_logger(__name__)
 
 
@@ -133,7 +139,7 @@ def handle_output_artifacts(results, exec_id, storage):
 
 
 def get_job_results(job_id: str, executor: Optional[dict] = None,
-                    storage: Optional[dict] = None) -> dict:
+                    storage: Optional[dict] = None) -> Any:
     """
     Get results of a calculation job
     Args:
@@ -148,63 +154,80 @@ def get_job_results(job_id: str, executor: Optional[dict] = None,
         results, output_artifacts = handle_output_artifacts(
             results, exec_id, storage)
         logger.info("Job %s result is %s" % (job_id, results))
-    return convert_to_content(results, job_info={
+    return JobResult(result=results, job_info={
         "output_artifacts": output_artifacts,
     })
 
 
 class CalculationMCPServer:
-    def __init__(self, *args, preprocess_func=None, **kwargs):
+    def __init__(self, *args, preprocess_func=None, fastmcp_mode=False,
+                 **kwargs):
+        """
+        Args:
+            preprocess_func: The preprocess function for all tools
+            fastmcp_mode: compatible for fastmcp.FastMCP
+        """
         self.preprocess_func = preprocess_func
+        self.fastmcp_mode = fastmcp_mode
         self.mcp = FastMCP(*args, **kwargs)
 
-    def add_patched_tool(self, fn, new_fn, name, is_async=False, doc=None):
-        # patch the metadata of the tool
-        context_kwarg = None
-        sig = inspect.signature(fn)
-        for param_name, param in sig.parameters.items():
-            if get_origin(param.annotation) is not None:
-                continue
-            if issubclass(param.annotation, Context):
-                context_kwarg = param_name
-                break
-        # combine parameters
-        parameters = []
-        for param in _get_typed_signature(fn).parameters.values():
-            if param.annotation is Path:
-                parameters.append(inspect.Parameter(
-                    name=param.name, default=param.default,
-                    annotation=str, kind=param.kind))
-            elif param.annotation is Optional[Path]:
-                parameters.append(inspect.Parameter(
-                    name=param.name, default=param.default,
-                    annotation=Optional[str], kind=param.kind))
-            else:
-                parameters.append(param)
-        for param in _get_typed_signature(new_fn).parameters.values():
-            if param.name != "kwargs":
-                parameters.append(param)
-        func_arg_metadata = get_metadata(
-            name,
-            parameters=parameters,
+    def add_patched_tool(self, fn, new_fn, name, is_async=False, doc=None,
+                         override_return_annotation=False):
+        """patch the metadata of the tool"""
+        context_kwarg = find_context_parameter(fn)
+
+        def _get_typed_signature_patched(call):
+            """patch parameters"""
+            typed_signature = _get_typed_signature(call)
+            new_typed_signature = _get_typed_signature(new_fn)
+            parameters = []
+            for param in typed_signature.parameters.values():
+                if param.annotation is Path:
+                    parameters.append(inspect.Parameter(
+                        name=param.name, default=param.default,
+                        annotation=str, kind=param.kind))
+                elif param.annotation is Optional[Path]:
+                    parameters.append(inspect.Parameter(
+                        name=param.name, default=param.default,
+                        annotation=Optional[str], kind=param.kind))
+                else:
+                    parameters.append(param)
+            for param in new_typed_signature.parameters.values():
+                if param.name != "kwargs":
+                    parameters.append(param)
+            return inspect.Signature(
+                parameters,
+                return_annotation=(new_typed_signature.return_annotation
+                                   if override_return_annotation
+                                   else typed_signature.return_annotation))
+
+        # Due to the frequent changes of MCP, we use a patching style here
+        mcp.server.fastmcp.utilities.func_metadata._get_typed_signature = \
+            _get_typed_signature_patched
+        func_arg_metadata = func_metadata(
+            fn,
             skip_names=[context_kwarg] if context_kwarg is not None else [],
-            globalns=getattr(fn, "__globals__", {})
+            structured_output=None,
         )
-        json_schema = func_arg_metadata.arg_model.model_json_schema()
+        mcp.server.fastmcp.utilities.func_metadata._get_typed_signature = \
+            _get_typed_signature
+        if self.fastmcp_mode and func_arg_metadata.wrap_output:
+            # Only simulate behavior of fastmcp for output_schema
+            func_arg_metadata.output_schema["x-fastmcp-wrap-result"] = True
+        parameters = func_arg_metadata.arg_model.model_json_schema(
+            by_alias=True)
         tool = Tool(
             fn=new_fn,
             name=name,
             description=doc or fn.__doc__,
-            parameters=json_schema,
+            parameters=parameters,
             fn_metadata=func_arg_metadata,
             is_async=is_async,
             context_kwarg=context_kwarg,
-            annotations=None,
         )
         self.mcp._tool_manager._tools[name] = tool
 
     def add_tool(self, fn, *args, **kwargs):
-        self.mcp.add_tool(fn, *args, **kwargs)
         tool = Tool.from_function(fn, *args, **kwargs)
         self.mcp._tool_manager._tools[tool.name] = tool
         return tool
@@ -215,7 +238,9 @@ class CalculationMCPServer:
 
         def decorator(fn: Callable) -> Callable:
             def submit_job(executor: Optional[dict] = None,
-                           storage: Optional[dict] = None, **kwargs):
+                           storage: Optional[dict] = None,
+                           **kwargs) -> TypedDict("results", {
+                               "job_id": str, "extra_info": Optional[dict]}):
                 trace_id = datetime.today().strftime('%Y-%m-%d-%H:%M:%S.%f')
                 logger.info("Job processing (Trace ID: %s)" % trace_id)
                 with set_directory(trace_id):
@@ -233,7 +258,7 @@ class CalculationMCPServer:
                     "job_id": job_id,
                     "extra_info": res.get("extra_info"),
                 }
-                return convert_to_content(result, job_info={
+                return JobResult(result=result, job_info={
                     "trace_id": trace_id,
                     "executor_type": executor_type,
                     "job_id": job_id,
@@ -263,7 +288,7 @@ class CalculationMCPServer:
                     logger.info("Job %s result is %s" % (job_id, results))
                     await context.log(level="info", message="Job %s result is"
                                       " %s" % (job_id, results))
-                return convert_to_content(results, job_info={
+                return JobResult(result=results, job_info={
                     "trace_id": trace_id,
                     "executor_type": executor_type,
                     "job_id": job_id,
@@ -273,8 +298,9 @@ class CalculationMCPServer:
                 })
 
             self.add_patched_tool(fn, run_job, fn.__name__, is_async=True)
-            self.add_patched_tool(fn, submit_job, "submit_" + fn.__name__,
-                                  doc="Submit a job")
+            self.add_patched_tool(
+                fn, submit_job, "submit_" + fn.__name__, doc="Submit a job",
+                override_return_annotation=True)
             self.add_tool(query_job_status)
             self.add_tool(terminate_job)
             self.add_tool(get_job_results)
@@ -284,9 +310,10 @@ class CalculationMCPServer:
     def run(self, **kwargs):
         if os.environ.get("DP_AGENT_RUNNING_MODE") in ["1", "true"]:
             return
-        async def health_check(request) :
+
+        async def health_check(request):
             return JSONResponse({"status": "ok"})
-        
+
         self.mcp._custom_starlette_routes.append(
             Route(
                 "/health",

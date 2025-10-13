@@ -9,6 +9,7 @@ from pathlib import Path
 
 import jsonpickle
 from dpdispatcher import Machine, Resources, Task, Submission
+from dpdispatcher.utils.job_status import JobStatus
 
 from .base_executor import BaseExecutor
 from .... import __path__
@@ -31,6 +32,50 @@ def get_source_code(fn):
     with open(source_file, "r", encoding="utf-8") as fd:
         pre_lines = fd.readlines()[:start_line - 1]
     return "".join(pre_lines + source_lines) + "\n"
+
+
+def get_func_def_script(fn):
+    script = ""
+    packages = []
+    fn_name = fn.__name__
+    module_name = fn.__module__
+    module = sys.modules[module_name]
+    if getattr(module, fn_name, None) is not fn:
+        # cannot import from module, maybe a local function
+        import cloudpickle
+        packages.extend(cloudpickle.__path__)
+        script += "import cloudpickle\n"
+        script += "%s = cloudpickle.loads(%s)\n" % \
+            (fn_name, cloudpickle.dumps(fn))
+    elif module_name in ["__main__", "__mp_main__"]:
+        if hasattr(module, "__file__"):
+            name = os.path.splitext(os.path.basename(module.__file__))[0]
+            if getattr(module, "__package__", None):
+                package = module.__package__
+                package_name = package.split('.')[0]
+                module = importlib.import_module(package_name)
+                packages.extend(module.__path__)
+                script += "from %s.%s import %s\n" % (
+                    package, name, fn_name)
+            else:
+                packages.append(module.__file__)
+                script += "from %s import %s\n" % (name, fn_name)
+        else:
+            # cannot get file of __main__, maybe in the interactive mode
+            import cloudpickle
+            packages.extend(cloudpickle.__path__)
+            script += "import cloudpickle\n"
+            script += "%s = cloudpickle.loads(%s)\n" % \
+                (fn_name, cloudpickle.dumps(fn))
+    else:
+        package_name = module_name.split('.')[0]
+        module = importlib.import_module(package_name)
+        if hasattr(module, "__path__"):
+            packages.extend(module.__path__)
+        elif hasattr(module, "__file__"):
+            packages.append(module.__file__)
+        script += "from %s import %s\n" % (module_name, fn_name)
+    return script, packages
 
 
 class DispatcherExecutor(BaseExecutor):
@@ -86,24 +131,8 @@ class DispatcherExecutor(BaseExecutor):
     def submit(self, fn, kwargs):
         script = ""
         fn_name = fn.__name__
-        module_name = fn.__module__
-        import_func_line = None
-        if module_name in ["__main__", "__mp_main__"]:
-            module = sys.modules[module_name]
-            if hasattr(module, "__file__"):
-                self.python_packages.append(module.__file__)
-                name = os.path.splitext(os.path.basename(module.__file__))[0]
-                import_func_line = "from %s import %s\n" % (name, fn_name)
-            else:
-                script += get_source_code(fn)
-        else:
-            package_name = module_name.split('.')[0]
-            module = importlib.import_module(package_name)
-            if hasattr(module, "__path__"):
-                self.python_packages.extend(module.__path__)
-            elif hasattr(module, "__file__"):
-                self.python_packages.append(module.__file__)
-            import_func_line = "from %s import %s\n" % (module_name, fn_name)
+        func_def_script, packages = get_func_def_script(fn)
+        self.python_packages.extend(packages)
 
         script += "import asyncio, jsonpickle, os\n"
         script += "from pathlib import Path\n\n"
@@ -112,8 +141,9 @@ class DispatcherExecutor(BaseExecutor):
         script += "    kwargs = jsonpickle.loads(r'''%s''')\n" % \
                   jsonpickle.dumps(kwargs)
         script += "    try:\n"
-        if import_func_line is not None:
-            script += "        " + import_func_line
+        for line in func_def_script.splitlines():
+            if line:
+                script += "        " + line + "\n"
         if inspect.iscoroutinefunction(fn):
             script += "        results = asyncio.run(%s(**kwargs))\n" % fn_name
         else:
@@ -198,17 +228,23 @@ class DispatcherExecutor(BaseExecutor):
         submission = Submission.deserialize(
             submission_dict=json.loads(content))
         submission.update_submission_state()
-        if not submission.check_all_finished():
+        if not submission.check_all_finished() and not any(
+            job.job_state in [JobStatus.terminated, JobStatus.unknown,
+                              JobStatus.unsubmitted]
+                for job in submission.belonging_jobs):
             return "Running"
         try:
             submission.run_submission(exit_on_submit=True)
         except Exception as e:
             logger.error(e)
             return "Failed"
-        if os.path.isfile("results.txt"):
-            return "Succeeded"
+        if submission.check_all_finished():
+            if os.path.isfile("results.txt"):
+                return "Succeeded"
+            else:
+                return "Failed"
         else:
-            return "Failed"
+            return "Running"
 
     def terminate(self, job_id):
         machine = Machine.load_from_dict(self.machine)

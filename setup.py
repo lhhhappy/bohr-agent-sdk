@@ -9,7 +9,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="bohr-agent-sdk",
-    version="0.1.102",
+    version="0.1.104",
     description="SDK for science agent and mcp tools",
     long_description=long_description,
     long_description_content_type="text/markdown",
@@ -22,7 +22,7 @@ setup(
     python_requires=">=3.10",
     install_requires=[
         "click",
-        "mcp", 
+        "mcp>=1.17.0",
         "paho-mqtt>=1.6.1",      # MQTT客户端
         "redis>=5.0.1",          # Redis客户端，使用最新稳定版
         "python-dotenv>=1.0.0",  # 环境变量管理
