@@ -22,7 +22,7 @@ classifiers = [
 # 核心依赖
 dependencies = [
     "click>=8.0.0",
-    "mcp",
+    "mcp>=1.17.0",
     "python-dotenv>=1.0.0",
     "typing-extensions>=4.8.0",
     "dpdispatcher>=0.6.8",
@@ -33,6 +33,7 @@ dependencies = [
     "redis>=6.2.0",
     "twine>=6.1.0",
     "build>=1.2.2.post1",
+    "cloudpickle==2.2.0",
     "watchdog>=6.0.0",
     "fastapi>=0.116.0",
     "bohrium-open-sdk"
