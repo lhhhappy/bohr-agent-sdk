@@ -138,8 +138,8 @@ class DispatcherExecutor(BaseExecutor):
         script += "from pathlib import Path\n\n"
         script += "if __name__ == \"__main__\":\n"
         script += "    cwd = os.getcwd()\n"
-        script += "    kwargs = jsonpickle.loads(r'''%s''')\n" % \
-                  jsonpickle.dumps(kwargs)
+        script += "    kwargs = jsonpickle.loads(%s)\n" % repr(
+            jsonpickle.dumps(kwargs))
         script += "    try:\n"
         for line in func_def_script.splitlines():
             if line:
