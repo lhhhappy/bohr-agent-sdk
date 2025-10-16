@@ -36,22 +36,9 @@ def get_user_identifier(access_key: str = None, app_key: str = None, session_id:
         if cached_user_id:
             return cached_user_id
     
-    # If no cache, call OpenSDK
-    if access_key and app_key:
-        try:
-            # Use OpenSDK to get user info
-            client = OpenSDK(
-                access_key=access_key,
-                app_key=app_key
-            )
-            user_info = client.user.get_info()
-            if user_info and user_info.get('code') == 0:
-                data = user_info.get('data', {})
-                bohrium_user_id = data.get('user_id')
-                if bohrium_user_id:
-                    return bohrium_user_id
-        except Exception as e:
-            pass
+    # If no cache, return access_key directly (consistent with WebSocket logic)
+    if access_key:
+        return access_key
     
     # If has session_id, use it
     if session_id:
