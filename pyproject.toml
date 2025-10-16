@@ -33,7 +33,7 @@ dependencies = [
     "redis>=6.2.0",
     "twine>=6.1.0",
     "build>=1.2.2.post1",
-    "cloudpickle==2.2.0",
+    "cloudpickle",
     "watchdog>=6.0.0",
     "fastapi>=0.116.0",
     "bohrium-open-sdk"
