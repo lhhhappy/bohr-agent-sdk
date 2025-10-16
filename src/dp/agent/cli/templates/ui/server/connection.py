@@ -86,21 +86,25 @@ class ConnectionContext:
     def get_user_identifier(self) -> str:
         """
         Get unique user identifier
-        Prefer bohrium_user_id, fallback to generated user_id
-        
+        Use access_key if available (for registered users), otherwise use generated user_id
+
         Returns:
             User identifier
         """
-        return self.bohrium_user_id if self.bohrium_user_id else self.user_id
+        # 优先使用 access_key，保持与 HTTP API 的一致性
+        if self.access_key:
+            return self.access_key
+        # 临时用户使用生成的 user_id
+        return self.user_id
         
     def is_registered_user(self) -> bool:
         """
         Check if user is registered
-        
+
         Returns:
-            True if has bohrium_user_id
+            True if has access_key (registered Bohrium user)
         """
-        return bool(self.bohrium_user_id)
+        return bool(self.access_key)
         
     def set_project_id(self, project_id: int):
         """
