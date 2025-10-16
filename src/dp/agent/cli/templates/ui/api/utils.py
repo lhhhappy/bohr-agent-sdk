@@ -141,21 +141,22 @@ def safe_filename(filename: str) -> str:
 async def check_project_id_required(context_manager, user_identifier: str) -> bool:
     """
     Check if project_id is required and set
-    
+
     Args:
         context_manager: WebSocket manager instance
-        user_identifier: User identifier
-        
+        user_identifier: User identifier (can be access_key or bohrium_user_id)
+
     Returns:
         True if project_id is set, False otherwise
     """
     # First check environment variable
     if os.environ.get('BOHR_PROJECT_ID'):
         return True
-        
+
     # Check user's connection context
     for context in context_manager.active_connections.values():
-        if context.get_user_identifier() == user_identifier:
+        # Match by bohrium_user_id or access_key
+        if context.get_user_identifier() == user_identifier or context.access_key == user_identifier:
             return bool(context.project_id)
-            
+
     return False
