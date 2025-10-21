@@ -138,14 +138,16 @@ def handle_output_artifacts(results, exec_id, storage):
     return results, output_artifacts
 
 
+# MCP does not regard Any as serializable in Python 3.12
+# use Optional[Any] to work around
 def get_job_results(job_id: str, executor: Optional[dict] = None,
-                    storage: Optional[dict] = None) -> Any:
+                    storage: Optional[dict] = None) -> Optional[Any]:
     """
     Get results of a calculation job
     Args:
         job_id (str): The ID of the calculation job
     Returns:
-        results (dict): results of the calculation job
+        results (Any): results of the calculation job
     """
     trace_id, exec_id = job_id.split("/")
     with set_directory(trace_id):
