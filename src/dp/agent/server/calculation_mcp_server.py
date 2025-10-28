@@ -1,4 +1,5 @@
 import inspect
+import json
 import os
 from collections.abc import Callable
 from contextlib import contextmanager
@@ -64,6 +65,20 @@ def set_directory(workdir: str):
         os.chdir(cwd)
 
 
+def load_executor(executor):
+    if not executor and os.path.exists("executor.json"):
+        with open("executor.json", "r") as f:
+            executor = json.load(f)
+    return executor
+
+
+def load_storage(storage):
+    if not storage and os.path.exists("storage.json"):
+        with open("storage.json", "r") as f:
+            storage = json.load(f)
+    return storage
+
+
 def query_job_status(job_id: str, executor: Optional[dict] = None
                      ) -> Literal["Running", "Succeeded", "Failed"]:
     """
@@ -75,6 +90,7 @@ def query_job_status(job_id: str, executor: Optional[dict] = None
     """
     trace_id, exec_id = job_id.split("/")
     with set_directory(trace_id):
+        executor = load_executor(executor)
         _, executor = init_executor(executor)
         status = executor.query_status(exec_id)
         logger.info("Job %s status is %s" % (job_id, status))
@@ -89,6 +105,7 @@ def terminate_job(job_id: str, executor: Optional[dict] = None):
     """
     trace_id, exec_id = job_id.split("/")
     with set_directory(trace_id):
+        executor = load_executor(executor)
         _, executor = init_executor(executor)
         executor.terminate(exec_id)
         logger.info("Job %s is terminated" % job_id)
@@ -151,6 +168,8 @@ def get_job_results(job_id: str, executor: Optional[dict] = None,
     """
     trace_id, exec_id = job_id.split("/")
     with set_directory(trace_id):
+        executor = load_executor(executor)
+        storage = load_storage(storage)
         _, executor = init_executor(executor)
         results = executor.get_results(exec_id)
         results, output_artifacts = handle_output_artifacts(
@@ -249,6 +268,12 @@ class CalculationMCPServer:
                     if preprocess_func is not None:
                         executor, storage, kwargs = preprocess_func(
                             executor, storage, kwargs)
+                    if executor:
+                        with open("executor.json", "w") as f:
+                            json.dump(executor, f, indent=4)
+                    if storage:
+                        with open("storage.json", "w") as f:
+                            json.dump(storage, f, indent=4)
                     kwargs, input_artifacts = handle_input_artifacts(
                         fn, kwargs, storage)
                     executor_type, executor = init_executor(executor)
