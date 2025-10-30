@@ -129,6 +129,7 @@ class DispatcherExecutor(BaseExecutor):
         self.resources["envs"]["DP_AGENT_RUNNING_MODE"] = "1"
 
     def submit(self, fn, kwargs):
+        kwargs = self.prune_context(kwargs)
         script = ""
         fn_name = fn.__name__
         func_def_script, packages = get_func_def_script(fn)
