@@ -88,6 +88,7 @@ class LocalExecutor(BaseExecutor):
         """
         self.env = env or {}
         self.dflow = dflow
+        self.workflow_id = None
 
     def set_env(self):
         old_env = {}
@@ -105,6 +106,7 @@ class LocalExecutor(BaseExecutor):
                 del os.environ[k]
 
     def submit(self, fn, kwargs):
+        kwargs = self.prune_context(kwargs)
         os.environ["DP_AGENT_RUNNING_MODE"] = "1"
         old_env = self.set_env()
         params = {"fn": fn, "kwargs": kwargs}
@@ -123,6 +125,7 @@ class LocalExecutor(BaseExecutor):
                     match_link = re.search(DFLOW_LINK_PATTERN, log)
                     if match_id and match_link:
                         wf_id = match_id.group(1)
+                        self.workflow_id = wf_id
                         wf_uid = match_id.group(2)
                         wf_link = match_link.group(1)
                         extra_info["workflow_id"] = wf_id
@@ -155,11 +158,18 @@ class LocalExecutor(BaseExecutor):
             return "Failed"
 
     def terminate(self, job_id):
+        if self.workflow_id is not None:
+            try:
+                from dflow import Workflow
+                wf = Workflow(id=self.workflow_id)
+                wf.terminate()
+            except Exception as e:
+                logger.error(f"Failed to terminate workflow: {e}")
         try:
             p = psutil.Process(int(job_id))
             p.terminate()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(f"Failed to terminate process: {e}")
 
     def get_results(self, job_id):
         if os.path.isfile("%s.txt" % job_id):
