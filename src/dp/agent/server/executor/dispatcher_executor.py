@@ -135,7 +135,7 @@ class DispatcherExecutor(BaseExecutor):
         func_def_script, packages = get_func_def_script(fn)
         self.python_packages.extend(packages)
 
-        script += "import asyncio, jsonpickle, os\n"
+        script += "import asyncio, jsonpickle, os, shutil\n"
         script += "from pathlib import Path\n\n"
         script += "if __name__ == \"__main__\":\n"
         script += "    cwd = os.getcwd()\n"
@@ -149,11 +149,19 @@ class DispatcherExecutor(BaseExecutor):
             script += "        results = asyncio.run(%s(**kwargs))\n" % fn_name
         else:
             script += "        results = %s(**kwargs)\n" % fn_name
+            script += "        import uuid\n"
+            script += "        result_dir = Path('result_files_dir_' + str(uuid.uuid4()))\n"
+            script += "        result_dir.mkdir(parents=True, exist_ok=True)\n"
             script += "        if isinstance(results, dict):\n"
             script += "            for name in results:\n"
             script += "                if isinstance(results[name], Path):\n"
-            script += "                    results[name] = " \
-                      "results[name].absolute().relative_to(cwd)\n"
+            script += "                    try:\n"
+            script += "                        results[name] =  results[name].absolute().relative_to(cwd)\n"
+            script += "                    except ValueError as e:\n"  # result file is not subpath of cwd
+            script += "                        dest_path = result_dir / results[name].absolute().relative_to('/')\n"
+            script += "                        dest_path.parent.mkdir(parents=True, exist_ok=True)\n"
+            script += "                        shutil.copy2(results[name], dest_path)\n"
+            script += "                        results[name] = dest_path.absolute().relative_to(cwd)\n"
         script += "    except Exception as e:\n"
         script += "        os.chdir(cwd)\n"
         script += "        with open('err', 'w') as f:\n"
