@@ -125,7 +125,7 @@ class MCPClient:
 
         executor = arguments.get("executor")
         storage = arguments.get("storage")
-        res = await self.session.call_tool("submit_" + tool_name, arguments)
+        res = await self.call_tool("submit_" + tool_name, arguments)
         if res.isError:
             logger.error("Failed to submit %s: %s" % (
                 tool_name, res.content[0].text))
@@ -137,7 +137,7 @@ class MCPClient:
             logger.info(job_info["extra_info"])
 
         while True:
-            res = await self.session.call_tool("query_job_status", {
+            res = await self.call_tool("query_job_status", {
                 "job_id": job_id, "executor": executor})
             if res.isError:
                 logger.error(res.content[0].text)
@@ -148,7 +148,7 @@ class MCPClient:
                     break
             await asyncio.sleep(self.query_interval)
 
-        res = await self.session.call_tool("get_job_results", {
+        res = await self.call_tool("get_job_results", {
             "job_id": job_id, "executor": executor, "storage": storage})
         if res.isError:
             logger.error("Job %s failed: %s" % (job_id, res.content[0].text))
