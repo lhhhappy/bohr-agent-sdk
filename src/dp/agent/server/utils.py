@@ -21,6 +21,7 @@ def get_logger(name, level="INFO",
 class JobResult(BaseModel):
     result: Any
     job_info: dict
+    tool_name: str | None = None
 
 
 class Tool(mcp.server.fastmcp.tools.Tool):
@@ -28,13 +29,23 @@ class Tool(mcp.server.fastmcp.tools.Tool):
     Workaround MCP server cannot print traceback
     Add job info to first unstructured content
     """
+    fn_metadata_map: dict | None = None
+
+    @classmethod
+    def from_function(cls, *args, fn_metadata_map=None, **kwargs):
+        tool = super().from_function(*args, **kwargs)
+        tool.fn_metadata_map = fn_metadata_map
+        return tool
+
     async def run(self, *args, **kwargs):
         try:
             kwargs["convert_result"] = False
             result = await super().run(*args, **kwargs)
             if isinstance(result, JobResult):
                 job_info = result.job_info
-                result = self.fn_metadata.convert_result(result.result)
+                fn_metadata = self.fn_metadata_map.get(
+                    result.tool_name, self.fn_metadata)
+                result = fn_metadata.convert_result(result.result)
                 if isinstance(result, tuple) and len(result) == 2:
                     unstructured_content, _ = result
                 else:
