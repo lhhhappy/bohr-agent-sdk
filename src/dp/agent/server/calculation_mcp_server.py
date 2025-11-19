@@ -7,17 +7,17 @@ from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse
-from typing import Any, Literal, Optional, TypedDict, List, Dict
+from typing import Annotated, Literal, Optional, List, Dict
 
-import mcp
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.utilities.context_injection import (
     find_context_parameter,
 )
 from mcp.server.fastmcp.utilities.func_metadata import (
-    _get_typed_signature,
+    ArgModelBase,
     func_metadata,
 )
+from pydantic import BaseModel, Field, create_model
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
@@ -65,18 +65,9 @@ def set_directory(workdir: str):
         os.chdir(cwd)
 
 
-def load_executor(executor):
-    if not executor and os.path.exists("executor.json"):
-        with open("executor.json", "r") as f:
-            executor = json.load(f)
-    return executor
-
-
-def load_storage(storage):
-    if not storage and os.path.exists("storage.json"):
-        with open("storage.json", "r") as f:
-            storage = json.load(f)
-    return storage
+def load_job_info():
+    with open("job.json", "r") as f:
+        return json.load(f)
 
 
 def query_job_status(job_id: str, executor: Optional[dict] = None
@@ -90,7 +81,7 @@ def query_job_status(job_id: str, executor: Optional[dict] = None
     """
     trace_id, exec_id = job_id.split("/")
     with set_directory(trace_id):
-        executor = load_executor(executor)
+        executor = load_job_info()["executor"] or executor
         _, executor = init_executor(executor)
         status = executor.query_status(exec_id)
         logger.info("Job %s status is %s" % (job_id, status))
@@ -105,7 +96,7 @@ def terminate_job(job_id: str, executor: Optional[dict] = None):
     """
     trace_id, exec_id = job_id.split("/")
     with set_directory(trace_id):
-        executor = load_executor(executor)
+        executor = load_job_info()["executor"] or executor
         _, executor = init_executor(executor)
         executor.terminate(exec_id)
         logger.info("Job %s is terminated" % job_id)
@@ -215,7 +206,8 @@ def handle_output_artifacts(results, exec_id, storage):
                     "storage_type": storage_type,
                     "uri": uri,
                 }
-            elif isinstance(results[name], list) and all(isinstance(item, Path) for item in results[name]):
+            elif isinstance(results[name], list) and all(
+                    isinstance(item, Path) for item in results[name]):
                 new_uris = []
                 for item in results[name]:
                     key = storage.upload("%s/outputs/%s" % (exec_id, name),
@@ -235,7 +227,7 @@ def handle_output_artifacts(results, exec_id, storage):
 # MCP does not regard Any as serializable in Python 3.12
 # use Optional[Any] to work around
 def get_job_results(job_id: str, executor: Optional[dict] = None,
-                    storage: Optional[dict] = None) -> Optional[Any]:
+                    storage: Optional[dict] = None):
     """
     Get results of a calculation job
     Args:
@@ -245,8 +237,9 @@ def get_job_results(job_id: str, executor: Optional[dict] = None,
     """
     trace_id, exec_id = job_id.split("/")
     with set_directory(trace_id):
-        executor = load_executor(executor)
-        storage = load_storage(storage)
+        job_info = load_job_info()
+        executor = job_info["executor"] or executor
+        storage = job_info["storage"] or storage
         _, executor = init_executor(executor)
         results = executor.get_results(exec_id)
         results, output_artifacts = handle_output_artifacts(
@@ -254,7 +247,24 @@ def get_job_results(job_id: str, executor: Optional[dict] = None,
         logger.info("Job %s result is %s" % (job_id, results))
     return JobResult(result=results, job_info={
         "output_artifacts": output_artifacts,
-    })
+    }, tool_name=job_info["tool_name"])
+
+
+annotation_map = {
+    Path: str,
+    Optional[Path]: Optional[str],
+    List[Path]: List[str],
+    Optional[List[Path]]: Optional[List[str]],
+    Dict[str, Path]: Dict[str, str],
+    Optional[Dict[str, Path]]: Optional[Dict[str, str]],
+    Dict[str, List[Path]]: Dict[str, List[str]],
+    Optional[Dict[str, List[Path]]]: Optional[Dict[str, List[str]]],
+}
+
+
+class SubmitResult(BaseModel):
+    job_id: str
+    extra_info: dict | None = None
 
 
 class CalculationMCPServer:
@@ -268,71 +278,47 @@ class CalculationMCPServer:
         self.preprocess_func = preprocess_func
         self.fastmcp_mode = fastmcp_mode
         self.mcp = FastMCP(*args, **kwargs)
+        self.fn_metadata_map = {}
 
     def add_patched_tool(self, fn, new_fn, name, is_async=False, doc=None,
                          override_return_annotation=False):
         """patch the metadata of the tool"""
         context_kwarg = find_context_parameter(fn)
-
-        def _get_typed_signature_patched(call):
-            """patch parameters"""
-            typed_signature = _get_typed_signature(call)
-            new_typed_signature = _get_typed_signature(new_fn)
-            parameters = []
-            for param in typed_signature.parameters.values():
-                if param.annotation is Path:
-                    parameters.append(inspect.Parameter(
-                        name=param.name, default=param.default,
-                        annotation=str, kind=param.kind))
-                elif param.annotation is Optional[Path]:
-                    parameters.append(inspect.Parameter(
-                        name=param.name, default=param.default,
-                        annotation=Optional[str], kind=param.kind))
-                elif param.annotation is List[Path]:
-                    parameters.append(inspect.Parameter(
-                        name=param.name, default=param.default,
-                        annotation=List[str], kind=param.kind))
-                elif param.annotation is Optional[List[Path]]:
-                    parameters.append(inspect.Parameter(
-                        name=param.name, default=param.default,
-                        annotation=Optional[List[str]], kind=param.kind))
-                elif param.annotation is Dict[str, Path]:
-                    parameters.append(inspect.Parameter(
-                        name=param.name, default=param.default,
-                        annotation=Dict[str, str], kind=param.kind))
-                elif param.annotation is Optional[Dict[str, Path]]:
-                    parameters.append(inspect.Parameter(
-                        name=param.name, default=param.default,
-                        annotation=Optional[Dict[str, str]], kind=param.kind))
-                elif param.annotation is Dict[str, List[Path]]:
-                    parameters.append(inspect.Parameter(
-                        name=param.name, default=param.default,
-                        annotation=Dict[str, List[str]], kind=param.kind))
-                elif param.annotation is Optional[Dict[str, List[Path]]]:
-                    parameters.append(inspect.Parameter(
-                        name=param.name, default=param.default,
-                        annotation=Optional[Dict[str, List[str]]], kind=param.kind))
-                else:
-                    parameters.append(param)
-            for param in new_typed_signature.parameters.values():
-                if param.name != "kwargs":
-                    parameters.append(param)
-            return inspect.Signature(
-                parameters,
-                return_annotation=(new_typed_signature.return_annotation
-                                   if override_return_annotation
-                                   else typed_signature.return_annotation))
-
-        # Due to the frequent changes of MCP, we use a patching style here
-        mcp.server.fastmcp.utilities.func_metadata._get_typed_signature = \
-            _get_typed_signature_patched
         func_arg_metadata = func_metadata(
             fn,
             skip_names=[context_kwarg] if context_kwarg is not None else [],
-            structured_output=None,
         )
-        mcp.server.fastmcp.utilities.func_metadata._get_typed_signature = \
-            _get_typed_signature
+        self.fn_metadata_map[name] = func_arg_metadata
+        model_params = {}
+        params = inspect.signature(fn, eval_str=True).parameters
+        for n, annotation in \
+                func_arg_metadata.arg_model.__annotations__.items():
+            param = params[n]
+            if param.annotation in annotation_map:
+                model_params[n] = Annotated[
+                    (annotation_map[param.annotation], Field())]
+            else:
+                model_params[n] = annotation
+            if param.default is not inspect.Parameter.empty:
+                model_params[n] = (model_params[n], param.default)
+        for n, param in inspect.signature(new_fn).parameters.items():
+            if n == "kwargs":
+                continue
+            model_params[n] = Annotated[(param.annotation, Field())]
+            if param.default is not inspect.Parameter.empty:
+                model_params[n] = (model_params[n], param.default)
+
+        func_arg_metadata.arg_model = create_model(
+            f"{fn.__name__}Arguments",
+            __base__=ArgModelBase,
+            **model_params,
+        )
+        if override_return_annotation:
+            new_func_arg_metadata = func_metadata(new_fn)
+            func_arg_metadata.output_model = new_func_arg_metadata.output_model
+            func_arg_metadata.output_schema = \
+                new_func_arg_metadata.output_schema
+            func_arg_metadata.wrap_output = new_func_arg_metadata.wrap_output
         if self.fastmcp_mode and func_arg_metadata.wrap_output:
             # Only simulate behavior of fastmcp for output_schema
             func_arg_metadata.output_schema["x-fastmcp-wrap-result"] = True
@@ -341,16 +327,18 @@ class CalculationMCPServer:
         tool = Tool(
             fn=new_fn,
             name=name,
-            description=doc or fn.__doc__,
+            description=doc or fn.__doc__ or "",
             parameters=parameters,
             fn_metadata=func_arg_metadata,
             is_async=is_async,
             context_kwarg=context_kwarg,
+            fn_metadata_map=self.fn_metadata_map,
         )
         self.mcp._tool_manager._tools[name] = tool
 
     def add_tool(self, fn, *args, **kwargs):
-        tool = Tool.from_function(fn, *args, **kwargs)
+        tool = Tool.from_function(
+            fn, *args, fn_metadata_map=self.fn_metadata_map, **kwargs)
         self.mcp._tool_manager._tools[tool.name] = tool
         return tool
 
@@ -361,20 +349,20 @@ class CalculationMCPServer:
         def decorator(fn: Callable) -> Callable:
             def submit_job(executor: Optional[dict] = None,
                            storage: Optional[dict] = None,
-                           **kwargs) -> TypedDict("results", {
-                               "job_id": str, "extra_info": Optional[dict]}):
+                           **kwargs) -> SubmitResult:
                 trace_id = datetime.today().strftime('%Y-%m-%d-%H:%M:%S.%f')
                 logger.info("Job processing (Trace ID: %s)" % trace_id)
                 with set_directory(trace_id):
                     if preprocess_func is not None:
                         executor, storage, kwargs = preprocess_func(
                             executor, storage, kwargs)
-                    if executor:
-                        with open("executor.json", "w") as f:
-                            json.dump(executor, f, indent=4)
-                    if storage:
-                        with open("storage.json", "w") as f:
-                            json.dump(storage, f, indent=4)
+                    job = {
+                        "tool_name": fn.__name__,
+                        "executor": executor,
+                        "storage": storage,
+                    }
+                    with open("job.json", "w") as f:
+                        json.dump(job, f, indent=4)
                     kwargs, input_artifacts = handle_input_artifacts(
                         fn, kwargs, storage)
                     executor_type, executor = init_executor(executor)
@@ -382,10 +370,10 @@ class CalculationMCPServer:
                     exec_id = res["job_id"]
                     job_id = "%s/%s" % (trace_id, exec_id)
                     logger.info("Job submitted (ID: %s)" % job_id)
-                result = {
-                    "job_id": job_id,
-                    "extra_info": res.get("extra_info"),
-                }
+                result = SubmitResult(
+                    job_id=job_id,
+                    extra_info=res.get("extra_info"),
+                )
                 return JobResult(result=result, job_info={
                     "trace_id": trace_id,
                     "executor_type": executor_type,
