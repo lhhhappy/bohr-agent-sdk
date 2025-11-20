@@ -17,6 +17,7 @@ from mcp.server.fastmcp.utilities.func_metadata import (
     ArgModelBase,
     func_metadata,
 )
+from mcp.server.sse import SseServerTransport
 from pydantic import BaseModel, Field, create_model
 from starlette.responses import JSONResponse
 from starlette.routing import Route
@@ -267,9 +268,35 @@ class SubmitResult(BaseModel):
     extra_info: dict | None = None
 
 
+def patch_mcp_close_connection():
+    _mock_orig_handle_post_message = SseServerTransport.handle_post_message
+
+    async def _mock_handle_post_message_with_close(self, scope, receive, send):
+        async def _send(message):
+            if message.get("type") == "http.response.start":
+                headers = list(message.get("headers", []))
+                headers = [
+                    (name, value)
+                    for name, value in headers
+                    if name.lower() != b"connection"
+                ]
+                headers.append((b"connection", b"close"))
+                message["headers"] = headers
+            elif message.get("type") == "http.response.body":
+                message["more_body"] = False
+            await send(message)
+        await _mock_orig_handle_post_message(self, scope, receive, _send)
+
+    if not getattr(SseServerTransport.handle_post_message,
+                   "__patched_close__", False):
+        SseServerTransport.handle_post_message = \
+            _mock_handle_post_message_with_close
+        SseServerTransport.handle_post_message.__patched_close__ = True
+
+
 class CalculationMCPServer:
     def __init__(self, *args, preprocess_func=None, fastmcp_mode=False,
-                 **kwargs):
+                 patch_close_connection=False, **kwargs):
         """
         Args:
             preprocess_func: The preprocess function for all tools
@@ -277,6 +304,8 @@ class CalculationMCPServer:
         """
         self.preprocess_func = preprocess_func
         self.fastmcp_mode = fastmcp_mode
+        if patch_close_connection:
+            patch_mcp_close_connection()
         self.mcp = FastMCP(*args, **kwargs)
         self.fn_metadata_map = {}
 
