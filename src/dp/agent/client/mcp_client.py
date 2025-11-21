@@ -160,3 +160,10 @@ class MCPClient:
 
     async def cleanup(self):
         await self.exit_stack.aclose()
+
+    async def __aenter__(self):
+        await self.connect_to_server()
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.cleanup()
