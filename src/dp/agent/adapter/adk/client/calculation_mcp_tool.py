@@ -105,6 +105,8 @@ class CalculationMCPTool(MCPTool):
         storage = args["storage"]
         res = await self.submit_tool.run_async(
             args=args, tool_context=tool_context, **kwargs)
+        if isinstance(res, dict):
+            res = types.CallToolResult.model_validate(res)
         if res.isError:
             logger.error(res.content[0].text)
             return res
@@ -125,6 +127,8 @@ class CalculationMCPTool(MCPTool):
             res = await self.query_tool.run_async(
                 args={"job_id": job_id, "executor": executor},
                 tool_context=tool_context, **kwargs)
+            if isinstance(res, dict):
+                res = types.CallToolResult.model_validate(res)
             if res.isError:
                 logger.error(res.content[0].text)
             else:
@@ -138,6 +142,8 @@ class CalculationMCPTool(MCPTool):
         res = await self.results_tool.run_async(
             args={"job_id": job_id, "executor": executor, "storage": storage},
             tool_context=tool_context, **kwargs)
+        if isinstance(res, dict):
+            res = types.CallToolResult.model_validate(res)
         if res.isError:
             await self.log("error", "Job %s failed: %s" % (
                 job_id, res.content[0].text), tool_context)
@@ -246,13 +252,15 @@ class BackgroundJobWatcher:
                     and part.function_response
                     and part.function_response.id in self.long_running_ids
                     and "result" in part.function_response.response
-                    and not part.function_response.response["result"].isError
                 ):
                     result = part.function_response.response["result"]
-                    results = json.loads(result.content[0].text)
-                    job_id = results["job_id"]
-                    self.long_running_jobs[job_id] = part.function_response
-                    self.status[job_id] = "Running"
+                    if isinstance(result, dict):
+                        result = types.CallToolResult.model_validate(result)
+                    if not result.isError:
+                        results = json.loads(result.content[0].text)
+                        job_id = results["job_id"]
+                        self.long_running_jobs[job_id] = part.function_response
+                        self.status[job_id] = "Running"
 
     async def watch_jobs(self):
         for job_id in self.status.keys():
@@ -261,6 +269,8 @@ class BackgroundJobWatcher:
             res = await self.toolset.query_tool.run_async(
                 args={"job_id": job_id, "executor": self.toolset.executor},
                 tool_context=None)
+            if isinstance(res, dict):
+                res = types.CallToolResult.model_validate(res)
             if res.isError:
                 logger.error(res.content[0].text)
                 continue
@@ -270,6 +280,8 @@ class BackgroundJobWatcher:
                     args={"job_id": job_id, "executor": self.toolset.executor,
                           "storage": self.toolset.storage},
                     tool_context=None)
+                if isinstance(res, dict):
+                    res = types.CallToolResult.model_validate(res)
                 job_info = getattr(res.content[0], "job_info", {})
                 response = self.long_running_jobs[job_id]
                 if res.isError:

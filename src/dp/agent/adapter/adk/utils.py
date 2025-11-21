@@ -31,6 +31,8 @@ def update_session_handler(
     tool_response: dict,
 ) -> Optional[Dict]:
     """Update session state with job and artifact information."""
+    if isinstance(tool_response, dict):
+        tool_response = types.CallToolResult.model_validate(tool_response)
     if len(tool_response.content) == 0 \
             or not hasattr(tool_response.content[0], "text"):
         return None
@@ -83,6 +85,8 @@ def search_error_in_memory_handler(toolset):
         tool: BaseTool, args: Dict[str, Any], tool_context: ToolContext,
         tool_response: dict,
     ) -> Optional[Dict]:
+        if isinstance(tool_response, dict):
+            tool_response = types.CallToolResult.model_validate(tool_response)
         if tool_response.isError:
             err_msg = tool_response.content[0].text
             if err_msg.startswith("Error executing tool"):
@@ -99,6 +103,8 @@ def search_error_in_memory_handler(toolset):
             tools = await toolset.get_tools()
             tool = next(filter(lambda t: t.name == "search_tool_error", tools))
             res = await tool.run_async(args=args, tool_context=None)
+            if isinstance(res, dict):
+                res = types.CallToolResult.model_validate(res)
             result = json.loads(res.content[0].text)
             logger.info("Search tool error result: %s" % result)
             if result.get("results") and result[
