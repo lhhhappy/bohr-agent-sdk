@@ -383,17 +383,14 @@ class CalculationMCPServer:
                            **kwargs) -> SubmitResult:
                 trace_id = datetime.today().strftime('%Y-%m-%d-%H:%M:%S.%f')
                 logger.info("Job processing (Trace ID: %s)" % trace_id)
-                if preprocess_func is not None:
-                    executor, storage, kwargs = preprocess_func(
-                        executor, storage, kwargs)
-                executor_type, executor = init_executor(executor)
-                if create_workdir is False or (
-                    create_workdir is None and inspect.iscoroutinefunction(fn)
-                        and executor_type == "local"):
+                if create_workdir is False:
                     workdir = "."
                 else:
                     workdir = trace_id
                 with set_directory(workdir):
+                    if preprocess_func is not None:
+                        executor, storage, kwargs = preprocess_func(
+                            executor, storage, kwargs)
                     job = {
                         "tool_name": fn.__name__,
                         "executor": executor,
@@ -403,6 +400,7 @@ class CalculationMCPServer:
                         json.dump(job, f, indent=4)
                     kwargs, input_artifacts = handle_input_artifacts(
                         fn, kwargs, storage)
+                    executor_type, executor = init_executor(executor)
                     res = executor.submit(fn, kwargs)
                     exec_id = res["job_id"]
                     job_id = "%s/%s" % (workdir, exec_id)
