@@ -371,7 +371,9 @@ class CalculationMCPServer:
         self.mcp._tool_manager._tools[tool.name] = tool
         return tool
 
-    def tool(self, preprocess_func=None):
+    def tool(self, preprocess_func=None, create_workdir=None):
+        # When create_workdir is None, do not create workdir when fn is async
+        # and running locally to avoid chdir conflicts, create otherwise
         if preprocess_func is None:
             preprocess_func = self.preprocess_func
 
@@ -381,10 +383,17 @@ class CalculationMCPServer:
                            **kwargs) -> SubmitResult:
                 trace_id = datetime.today().strftime('%Y-%m-%d-%H:%M:%S.%f')
                 logger.info("Job processing (Trace ID: %s)" % trace_id)
-                with set_directory(trace_id):
-                    if preprocess_func is not None:
-                        executor, storage, kwargs = preprocess_func(
-                            executor, storage, kwargs)
+                if preprocess_func is not None:
+                    executor, storage, kwargs = preprocess_func(
+                        executor, storage, kwargs)
+                executor_type, executor = init_executor(executor)
+                if create_workdir is False or (
+                    create_workdir is None and inspect.iscoroutinefunction(fn)
+                        and executor_type == "local"):
+                    workdir = "."
+                else:
+                    workdir = trace_id
+                with set_directory(workdir):
                     job = {
                         "tool_name": fn.__name__,
                         "executor": executor,
@@ -394,10 +403,9 @@ class CalculationMCPServer:
                         json.dump(job, f, indent=4)
                     kwargs, input_artifacts = handle_input_artifacts(
                         fn, kwargs, storage)
-                    executor_type, executor = init_executor(executor)
                     res = executor.submit(fn, kwargs)
                     exec_id = res["job_id"]
-                    job_id = "%s/%s" % (trace_id, exec_id)
+                    job_id = "%s/%s" % (workdir, exec_id)
                     logger.info("Job submitted (ID: %s)" % job_id)
                 result = SubmitResult(
                     job_id=job_id,
@@ -416,17 +424,23 @@ class CalculationMCPServer:
                 context = self.mcp.get_context()
                 trace_id = datetime.today().strftime('%Y-%m-%d-%H:%M:%S.%f')
                 logger.info("Job processing (Trace ID: %s)" % trace_id)
-                with set_directory(trace_id):
-                    if preprocess_func is not None:
-                        executor, storage, kwargs = preprocess_func(
-                            executor, storage, kwargs)
+                if preprocess_func is not None:
+                    executor, storage, kwargs = preprocess_func(
+                        executor, storage, kwargs)
+                executor_type, executor = init_executor(executor)
+                if create_workdir is False or (
+                    create_workdir is None and inspect.iscoroutinefunction(fn)
+                        and executor_type == "local"):
+                    workdir = "."
+                else:
+                    workdir = trace_id
+                with set_directory(workdir):
                     kwargs, input_artifacts = handle_input_artifacts(
                         fn, kwargs, storage)
-                    executor_type, executor = init_executor(executor)
                     res = await executor.async_run(
-                        fn, kwargs, context, trace_id)
+                        fn, kwargs, context, workdir)
                     exec_id = res["job_id"]
-                    job_id = "%s/%s" % (trace_id, exec_id)
+                    job_id = "%s/%s" % (workdir, exec_id)
                     results = res["result"]
                     results, output_artifacts = handle_output_artifacts(
                         results, exec_id, storage)
