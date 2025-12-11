@@ -43,6 +43,7 @@ class SessionManager:
     MAX_WAIT_TIME = 5  # Max wait time for runner initialization (seconds)
     WAIT_INTERVAL = 0.1  # Wait interval (seconds)
     MAX_CONTEXT_MESSAGES = 8  # Max messages in context
+    HEARTBEAT_INTERVAL = 15  # Send heartbeat every 15 seconds during long-running tasks
     
     def __init__(self):
         """Initialize session manager"""
@@ -632,13 +633,32 @@ class SessionManager:
     ):
         """Process message stream - using ADK native event handling"""
         streaming_text = ""  # Accumulate streaming text
+        last_heartbeat_time = asyncio.get_event_loop().time()
 
-        # Run Runner
-        async for event in runner.run_async(
-            new_message=content,
-            user_id=user_identifier,
-            session_id=session_id
-        ):
+        # Run Runner with heartbeat support
+        async def event_generator_with_heartbeat():
+            """Wrap event generator with heartbeat mechanism"""
+            nonlocal last_heartbeat_time
+            async for event in runner.run_async(
+                new_message=content,
+                user_id=user_identifier,
+                session_id=session_id
+            ):
+                yield event
+                last_heartbeat_time = asyncio.get_event_loop().time()
+
+        async def send_heartbeat_if_needed():
+            """Send heartbeat if enough time has passed"""
+            nonlocal last_heartbeat_time
+            current_time = asyncio.get_event_loop().time()
+            if current_time - last_heartbeat_time >= self.HEARTBEAT_INTERVAL:
+                await self._send_message(context, {
+                    "type": "heartbeat",
+                    "timestamp": datetime.now().isoformat()
+                })
+                last_heartbeat_time = current_time
+
+        async for event in event_generator_with_heartbeat():
             # 1. Check event author
             author = getattr(event, 'author', None)
             
@@ -709,15 +729,18 @@ class SessionManager:
                 # State changes
                 if hasattr(event.actions, 'state_delta') and event.actions.state_delta:
                     pass
-                
+
                 # Skip summarization flag
                 if hasattr(event.actions, 'skip_summarization') and event.actions.skip_summarization:
                     pass
-                
+
                 # Agent transfer
                 if hasattr(event.actions, 'transfer_to_agent') and event.actions.transfer_to_agent:
                     pass
-        
+
+            # 8. Send heartbeat to keep connection alive during long-running tasks
+            await send_heartbeat_if_needed()
+
         # Send completion marker
         await self._send_message(context, {
             "type": "complete",
